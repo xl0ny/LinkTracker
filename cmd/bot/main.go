@@ -7,8 +7,9 @@ import (
 )
 
 func main() {
-	TelegramTokenConfig, err := bot.Load()
+	cfg, err := bot.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
+	bot.Run(cfg)
 }

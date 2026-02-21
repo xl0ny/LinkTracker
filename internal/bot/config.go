@@ -20,8 +20,6 @@ type Config struct {
 	TelegramToken TelegramToken
 }
 
-// Load загружает конфиг из окружения: читает .env (если есть), затем заполняет структуру
-// по тегам envconfig (имена переменных, required, при желании можно добавить default в тег).
 func Load() (*Config, error) {
 	_ = godotenv.Load()
 
@@ -40,7 +38,6 @@ func Load() (*Config, error) {
 	}, nil
 }
 
-// isValidTelegramTokenFormat проверяет формат токена Bot API (число:строка).
 func isValidTelegramTokenFormat(s string) bool {
 	parts := strings.SplitN(s, ":", 2)
 	if len(parts) != 2 {

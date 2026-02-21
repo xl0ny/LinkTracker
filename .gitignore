@@ -40,6 +40,7 @@ go.work.sum
 .project
 .classpath
 .settings/
+.cursor/
 
 # macOS
 .DS_Store
