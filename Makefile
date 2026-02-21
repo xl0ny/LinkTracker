@@ -25,8 +25,12 @@ $(addprefix build_,$(MODULES)):
 	mkdir -p bin; \
 	go build -o ./bin/$$modulename ./cmd/$$modulename
 
-## test: run all tests
+# test: run all tests
+#   -race       : detect data races
+#   -count=1    : disable test cache (run tests every time)
+#   -coverpkg   : collect coverage for all packages in the module
+#   -coverprofile : write coverage to file
 .PHONY: test
 test:
-	@go test -coverpkg='github.com/es-debug/backend-academy-2024-go-template/...' --race -count=1 -coverprofile='$(COVERAGE_FILE)' ./...
+	@go test -coverpkg='gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/...' --race -count=1 -coverprofile='$(COVERAGE_FILE)' ./...
 	@go tool cover -func='$(COVERAGE_FILE)' | grep ^total | tr -s '\t'

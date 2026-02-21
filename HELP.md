@@ -37,7 +37,7 @@ APP_TELEGRAM_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
 
 * [Telegram Bot API](https://core.telegram.org/bots/api) — API для взаимодействия
   с Telegram. В проекте используется SDK
-  [java-telegram-bot-api](https://github.com/pengrad/java-telegram-bot-api)
+  [go-telegram-bot-api](https://github.com/go-telegram-bot-api/telegram-bot-api)
 * [GitHub REST API](https://docs.github.com/en/rest) — API для получения информации
   о репозиториях, коммитах, issues и pull requests
 * [StackOverflow API](https://api.stackexchange.com/docs) — API для получения
