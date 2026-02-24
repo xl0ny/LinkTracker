@@ -34,3 +34,8 @@ $(addprefix build_,$(MODULES)):
 test:
 	@go test -coverpkg='gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/...' --race -count=1 -coverprofile='$(COVERAGE_FILE)' ./...
 	@go tool cover -func='$(COVERAGE_FILE)' | grep ^total | tr -s '\t'
+
+.PHONY: run-bot
+run-bot:
+	@echo "Running bot"
+	@go run ./cmd/bot/main.go

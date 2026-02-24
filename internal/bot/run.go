@@ -17,11 +17,11 @@ const (
 func Run(cfg *Config) {
 	api, err := tgbotapi.NewBotAPI(cfg.TelegramToken.String())
 	if err != nil {
-		slog.Error("инициализация бота", slog.String("error", err.Error()), slog.String("event", "bot_init"))
+		slog.Error("bot initialization", slog.String("error", err.Error()), slog.String("event", "bot_init"))
 		os.Exit(1)
 	}
 	// api.Debug = true
-	slog.Info("бот авторизован", slog.String("bot_username", api.Self.UserName), slog.String("event", "authorized"))
+	slog.Info("bot authorized", slog.String("bot_username", api.Self.UserName), slog.String("event", "authorized"))
 
 	setMenuCommands(api, commands.All())
 
@@ -47,12 +47,12 @@ func setMenuCommands(api *tgbotapi.BotAPI, cmds []model.Command) {
 	}
 	resp, err := api.Request(tgbotapi.NewSetMyCommands(botCommands...))
 	if err != nil {
-		slog.Warn("не удалось установить меню команд", slog.String("error", err.Error()), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
+		slog.Warn("failed to set commands menu", slog.String("error", err.Error()), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
 		return
 	}
 	if !resp.Ok {
-		slog.Warn("ответ API setMyCommands не Ok", slog.String("description", resp.Description), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
+		slog.Warn("setMyCommands API response not Ok", slog.String("description", resp.Description), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
 		return
 	}
-	slog.Info("меню команд установлено", slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
+	slog.Info("commands menu set", slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
 }

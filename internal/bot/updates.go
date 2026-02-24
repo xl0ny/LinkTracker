@@ -12,7 +12,7 @@ func ReceiveUpdates(api *tgbotapi.BotAPI, actions chan<- model.Action) {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := api.GetUpdatesChan(u)
-	slog.Info("приём обновлений запущен", slog.String("event", "updates_started"))
+	slog.Info("updates receiving started", slog.String("event", "updates_started"))
 
 	for update := range updates {
 		if update.Message == nil {

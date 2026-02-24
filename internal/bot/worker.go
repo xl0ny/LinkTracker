@@ -17,9 +17,9 @@ func Worker(actions <-chan model.Action, api *tgbotapi.BotAPI, d *Dispatcher) {
 		msg := tgbotapi.NewMessage(action.ChatID, text)
 		_, err := api.Send(msg)
 		if err != nil {
-			slog.Warn("ошибка отправки сообщения", slog.String("error", err.Error()), slog.String("command", action.Command), slog.Int64("chat_id", action.ChatID), slog.String("event", "send_message"))
+			slog.Warn("failed to send message", slog.String("error", err.Error()), slog.String("command", action.Command), slog.Int64("chat_id", action.ChatID), slog.String("event", "send_message"))
 			continue
 		}
-		slog.Info("команда обработана", slog.String("command", action.Command), slog.Int64("chat_id", action.ChatID), slog.String("event", "command_handled"))
+		slog.Info("command processed", slog.String("command", action.Command), slog.Int64("chat_id", action.ChatID), slog.String("event", "command_handled"))
 	}
 }
