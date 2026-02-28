@@ -3,6 +3,7 @@ variables:
   GO_VERSION: "1.25"
   GO_LINTER_VERSION: "v2.10"
   GOPATH: "$CI_PROJECT_DIR/.go"
+  GOMODCACHE: "$CI_PROJECT_DIR/.go/pkg/mod" 
 
 stages:
   - setup
@@ -13,6 +14,7 @@ download_deps:
   stage: setup
   image: golang:${GO_VERSION}-alpine
   script:
+    - mkdir -p .go/pkg/mod
     - go mod download
   cache:
     key: ${CI_COMMIT_REF_SLUG}
