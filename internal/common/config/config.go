@@ -41,8 +41,8 @@ func Load() (*Config, error) {
 	}, nil
 }
 
-func hasValidTelegramTokenFormat(s string) bool {
-	parts := strings.SplitN(s, ":", 2)
+func hasValidTelegramTokenFormat(token string) bool {
+	parts := strings.SplitN(token, ":", 2)
 	if len(parts) != 2 {
 		return false
 	}
