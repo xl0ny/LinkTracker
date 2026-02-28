@@ -17,7 +17,7 @@ lint:
   stage: check
   image: golangci/golangci-lint:${GO_LINTER_VERSION}-alpine
   script:
-    - golangci-lint run -c golangci.yml --timeout=5m
+    - golangci-lint run -c .golangci.yml --timeout=5m
   allow_failure: false
 
 test:
