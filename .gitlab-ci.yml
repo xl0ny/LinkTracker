@@ -1,7 +1,7 @@
 ---
 variables:
   GO_VERSION: "1.25"
-  GO_LINTER_VERSION: "v2.3"
+  GO_LINTER_VERSION: "v2.10"
   GOPATH: "$CI_PROJECT_DIR/.go"
 
 cache:
