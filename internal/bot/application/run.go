@@ -1,12 +1,16 @@
-package bot
+package application
 
 import (
+	"context"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/commands"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/model"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/commands"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 )
 
 const (
@@ -14,30 +18,31 @@ const (
 	actionBuf   = 100
 )
 
-func Run(cfg *Config) {
-	api, err := tgbotapi.NewBotAPI(cfg.TelegramToken.String())
+// Run starts the bot with the given config.
+func Run(cfg *config.Config) {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	api, err := tgbotapi.NewBotAPI(cfg.TelegramToken)
 	if err != nil {
 		slog.Error("bot initialization", slog.String("error", err.Error()), slog.String("event", "bot_init"))
 		os.Exit(1)
 	}
-	// api.Debug = true
 	slog.Info("bot authorized", slog.String("bot_username", api.Self.UserName), slog.String("event", "authorized"))
 
 	setMenuCommands(api, commands.All())
 
-	actions := make(chan model.Action, actionBuf)
+	actions := ReceiveUpdates(ctx, api)
 	dispatcher := NewDispatcher(commands.All())
 
 	for i := 0; i < workerCount; i++ {
 		go Worker(actions, api, dispatcher)
 	}
-	go ReceiveUpdates(api, actions)
-
-	select {}
+	<-ctx.Done()
+	slog.Info("shutting down", slog.String("event", "shutdown"))
+	os.Exit(0)
 }
 
-// setMenuCommands регистрирует команды в меню бота (setMyCommands).
-func setMenuCommands(api *tgbotapi.BotAPI, cmds []model.Command) {
+func setMenuCommands(api *tgbotapi.BotAPI, cmds []domain.Command) {
 	botCommands := make([]tgbotapi.BotCommand, 0, len(cmds))
 	for _, c := range cmds {
 		botCommands = append(botCommands, tgbotapi.BotCommand{

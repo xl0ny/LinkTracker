@@ -3,8 +3,8 @@ package commands_test
 import (
 	"testing"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/commands"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/model"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/commands"
 )
 
 func TestStart_Name(t *testing.T) {
@@ -21,10 +21,9 @@ func TestStart_Description(t *testing.T) {
 	}
 }
 
-// Позитивный сценарий (blackbox): при получении /start бот отвечает приветственным сообщением.
 func TestStart_Handle_returnsWelcomeMessage(t *testing.T) {
 	var cmd commands.Start
-	action := model.Action{Command: "start"}
+	action := domain.Action{Command: "start"}
 	text, send := cmd.Handle(action, nil)
 	if !send {
 		t.Error("Handle() must return send=true")

@@ -1,4 +1,4 @@
-package bot
+package config
 
 import (
 	"fmt"
@@ -8,37 +8,40 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
-type TelegramToken string
-
-func (t TelegramToken) String() string { return string(t) }
-
 type configRaw struct {
 	TelegramToken string `envconfig:"APP_TELEGRAM_TOKEN" required:"true"`
 }
 
 type Config struct {
-	TelegramToken TelegramToken
+	TelegramToken string
+}
+
+// LoggingConfig is used for YAML config (e.g. config.yaml).
+type LoggingConfig struct {
+	Mode string `yaml:"mode"`
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		return nil, fmt.Errorf("config loading error:")
+	}
 
 	var raw configRaw
 	if err := envconfig.Process("", &raw); err != nil {
-		return nil, fmt.Errorf("конфиг: %w", err)
+		return nil, fmt.Errorf("config: %w", err)
 	}
 
 	token := strings.TrimSpace(raw.TelegramToken)
-	if !isValidTelegramTokenFormat(token) {
-		return nil, fmt.Errorf("APP_TELEGRAM_TOKEN неверный формат (ожидается <число>:<строка>)")
+	if !hasValidTelegramTokenFormat(token) {
+		return nil, fmt.Errorf("APP_TELEGRAM_TOKEN invalid format (expected <number>:<string>)")
 	}
 
 	return &Config{
-		TelegramToken: TelegramToken(token),
+		TelegramToken: token,
 	}, nil
 }
 
-func isValidTelegramTokenFormat(s string) bool {
+func hasValidTelegramTokenFormat(s string) bool {
 	parts := strings.SplitN(s, ":", 2)
 	if len(parts) != 2 {
 		return false

@@ -1,18 +1,18 @@
-package bot_test
+package application_test
 
 import (
 	"strings"
 	"testing"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/commands"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/model"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/commands"
 )
 
 func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
-	d := bot.NewDispatcher(commands.All())
-	action := model.Action{Command: "start"}
+	d := application.NewDispatcher(commands.All())
+	action := domain.Action{Command: "start"}
 	text, send := d.Dispatch(action, (*tgbotapi.BotAPI)(nil))
 	if !send {
 		t.Fatal("Dispatch(start) must return send=true")
@@ -24,8 +24,8 @@ func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
-	d := bot.NewDispatcher(commands.All())
-	action := model.Action{Command: "help"}
+	d := application.NewDispatcher(commands.All())
+	action := domain.Action{Command: "help"}
 	text, send := d.Dispatch(action, (*tgbotapi.BotAPI)(nil))
 	if !send {
 		t.Fatal("Dispatch(help) must return send=true")
@@ -35,10 +35,9 @@ func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
 	}
 }
 
-// Негативный сценарий (blackbox): при получении неизвестной команды бот отвечает сообщением об ошибке.
 func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
-	d := bot.NewDispatcher(commands.All())
-	action := model.Action{Command: "unknowncommand"}
+	d := application.NewDispatcher(commands.All())
+	action := domain.Action{Command: "unknowncommand"}
 	text, send := d.Dispatch(action, (*tgbotapi.BotAPI)(nil))
 	if !send {
 		t.Fatal("Dispatch(unknown) must return send=true (error message)")
@@ -49,8 +48,8 @@ func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_emptyCommand_noResponse(t *testing.T) {
-	d := bot.NewDispatcher(commands.All())
-	action := model.Action{Command: ""}
+	d := application.NewDispatcher(commands.All())
+	action := domain.Action{Command: ""}
 	text, send := d.Dispatch(action, (*tgbotapi.BotAPI)(nil))
 	if send {
 		t.Errorf("Dispatch(empty command) must return send=false, got send=true, text=%q", text)

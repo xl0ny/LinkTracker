@@ -1,14 +1,14 @@
-package bot
+package application
 
 import (
 	"log/slog"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/model"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
-// Worker обрабатывает действия из канала через диспетчер. Блокирующая горутина.
-func Worker(actions <-chan model.Action, api *tgbotapi.BotAPI, d *Dispatcher) {
+// Worker processes actions from the channel via the dispatcher.
+func Worker(actions <-chan domain.Action, api *tgbotapi.BotAPI, d *Dispatcher) {
 	for action := range actions {
 		text, send := d.Dispatch(action, api)
 		if !send {

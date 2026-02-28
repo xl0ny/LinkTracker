@@ -5,9 +5,9 @@ import (
 	"os"
 
 	"github.com/goccy/go-yaml"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/infrastructure/config"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/infrastructure/logging"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
 )
 
 func main() {
@@ -17,19 +17,22 @@ func main() {
 	if err != nil {
 		slog.Error("failed to load config", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 	}
-	
+
 	err = yaml.Unmarshal(data, &loggingConfig)
-	if os.Getenv("DEBUG") == "1" {	
+	if os.Getenv("DEBUG") == "1" {
 		level = slog.LevelDebug
 	} else {
 		level = slog.LevelInfo
 	}
-	slog.SetDefault(slog.New(logging.NewHandler(level)))
 
-	cfg, err := bot.Load()
+	var logger logging.LoggerI
+	logger = logging.NewLogger(level)
+	slog.SetDefault(slog.New(logger))
+
+	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("failed to load config", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 		os.Exit(1)
 	}
-	bot.Run(cfg)
+	application.Run(cfg)
 }

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/commands"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/model"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/commands"
 )
 
 func TestHelp_Name(t *testing.T) {
@@ -22,10 +22,9 @@ func TestHelp_Description(t *testing.T) {
 	}
 }
 
-// Позитивный сценарий (blackbox): при получении /help бот отвечает описанием команд.
 func TestHelp_Handle_returnsCommandList(t *testing.T) {
 	var cmd commands.Help
-	action := model.Action{Command: "help"}
+	action := domain.Action{Command: "help"}
 	text, send := cmd.Handle(action, nil)
 	if !send {
 		t.Error("Handle() must return send=true")
