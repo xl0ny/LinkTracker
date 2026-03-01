@@ -3,58 +3,32 @@ variables:
   GO_VERSION: "1.25"
   GO_LINTER_VERSION: "v2.10"
   GOPATH: "$CI_PROJECT_DIR/.go"
-  GOMODCACHE: "$CI_PROJECT_DIR/.go/pkg/mod" 
+
+cache:
+  paths:
+    - .go/pkg/mod/
 
 stages:
-  - setup
-  - check
+  - lint
+  - test
   - build
 
-download_deps:
-  stage: setup
-  image: golang:${GO_VERSION}-alpine
-  script:
-    - mkdir -p .go/pkg/mod
-    - go mod download
-  cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    paths:
-      - .go/pkg/mod/
-    policy: push
-
 lint:
-  stage: check
+  stage: lint
   image: golangci/golangci-lint:${GO_LINTER_VERSION}-alpine
-  cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    paths:
-      - .go/pkg/mod/
-    policy: pull
   script:
     - golangci-lint run -c .golangci.yml --timeout=5m
-  allow_failure: false
 
 test:
-  stage: check
+  stage: test
   image: golang:${GO_VERSION}-alpine
-  cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    paths:
-      - .go/pkg/mod/
-    policy: pull
   script:
     - apk add --no-cache gcc musl-dev
     - go test -race -cover -count=1 ./...
-  allow_failure: false
 
 build:
   stage: build
   image: golang:${GO_VERSION}-alpine
-  cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    paths:
-      - .go/pkg/mod/
-    policy: pull
   script:
     - mkdir -p bin
     - for d in cmd/*; do
