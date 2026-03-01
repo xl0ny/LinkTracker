@@ -17,7 +17,6 @@ lint:
   stage: lint
   image: golangci/golangci-lint:${GO_LINTER_VERSION}-alpine
   script:
-    - go env GOMODCACHE
     - golangci-lint run -c .golangci.yml --timeout=5m
 
 test:
