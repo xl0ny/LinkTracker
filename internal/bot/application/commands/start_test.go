@@ -3,8 +3,8 @@ package commands_test
 import (
 	"testing"
 
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/commands"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/commands"
 )
 
 func TestStart_Name(t *testing.T) {
@@ -24,7 +24,7 @@ func TestStart_Description(t *testing.T) {
 func TestStart_Handle_returnsWelcomeMessage(t *testing.T) {
 	var cmd commands.Start
 	action := domain.Action{Command: "start"}
-	text, send := cmd.Handle(action, nil)
+	text, send := cmd.Handle(action)
 	if !send {
 		t.Error("Handle() must return send=true")
 	}

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/commands"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/commands"
 )
 
 func TestHelp_Name(t *testing.T) {
@@ -25,7 +25,7 @@ func TestHelp_Description(t *testing.T) {
 func TestHelp_Handle_returnsCommandList(t *testing.T) {
 	var cmd commands.Help
 	action := domain.Action{Command: "help"}
-	text, send := cmd.Handle(action, nil)
+	text, send := cmd.Handle(action)
 	if !send {
 		t.Error("Handle() must return send=true")
 	}

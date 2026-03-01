@@ -6,13 +6,11 @@ import (
 	"os"
 )
 
-// Logger sends Info/Debug to stdout, Warn/Error to stderr.
 type Logger struct {
 	info slog.Handler
 	err  slog.Handler
 }
 
-// NewLogger creates a logger with split streams.
 func NewLogger(level slog.Level) *Logger {
 	opts := &slog.HandlerOptions{Level: level}
 	return &Logger{

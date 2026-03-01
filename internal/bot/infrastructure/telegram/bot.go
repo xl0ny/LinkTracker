@@ -1,4 +1,4 @@
-package application
+package telegram
 
 import (
 	"context"
@@ -8,12 +8,29 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
-// ReceiveUpdates receives updates from the API and sends actions to the channel.
-func ReceiveUpdates(ctx context.Context, api *tgbotapi.BotAPI) <-chan domain.Action {
+const actionBuf = 100
+
+type bot struct {
+	api *tgbotapi.BotAPI
+}
+
+func NewBot(api *tgbotapi.BotAPI) *bot {
+	return &bot{
+		api: api,
+	}
+}
+
+func (bot *bot) SendMessage(chatid int64, message string) error {
+	msg := tgbotapi.NewMessage(chatid, message)
+	_, err := bot.api.Send(msg)
+	return err
+}
+
+func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 	ch := make(chan domain.Action, actionBuf)
 
 	u := tgbotapi.NewUpdate(0)
-	updates := api.GetUpdatesChan(u)
+	apiUpdates := bot.api.GetUpdatesChan(u)
 
 	go func() {
 		slog.Info("updates receiving started", slog.String("event", "updates_started"))
@@ -21,8 +38,9 @@ func ReceiveUpdates(ctx context.Context, api *tgbotapi.BotAPI) <-chan domain.Act
 		for {
 			select {
 			case <-ctx.Done():
+				close(ch)
 				return
-			case update := <-updates:
+			case update := <-apiUpdates:
 				if update.Message == nil {
 					continue
 				}

@@ -1,4 +1,4 @@
-package application
+package app
 
 import (
 	"context"
@@ -8,17 +8,14 @@ import (
 	"syscall"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/commands"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/commands"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/telegram"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 )
 
-const (
-	workerCount = 5
-	actionBuf   = 100
-)
+const workerCount = 5
 
-// Run starts the bot with the given config.
 func Run(cfg *config.Config) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -29,20 +26,22 @@ func Run(cfg *config.Config) {
 	}
 	slog.Info("bot authorized", slog.String("bot_username", api.Self.UserName), slog.String("event", "authorized"))
 
+	bot := telegram.NewBot(api)
+
 	setMenuCommands(api, commands.All())
 
-	actions := ReceiveUpdates(ctx, api)
-	dispatcher := NewDispatcher(commands.All())
+	actions := bot.ReceiveUpdates(ctx)
+	dispatcher := application.NewDispatcher(commands.All())
 
 	for i := 0; i < workerCount; i++ {
-		go Worker(actions, api, dispatcher)
+		go application.Worker(actions, dispatcher, bot)
 	}
 	<-ctx.Done()
 	slog.Info("shutting down", slog.String("event", "shutdown"))
 	os.Exit(0)
 }
 
-func setMenuCommands(api *tgbotapi.BotAPI, cmds []domain.Command) {
+func setMenuCommands(api *tgbotapi.BotAPI, cmds []commands.Command) {
 	botCommands := make([]tgbotapi.BotCommand, 0, len(cmds))
 	for _, c := range cmds {
 		botCommands = append(botCommands, tgbotapi.BotCommand{
