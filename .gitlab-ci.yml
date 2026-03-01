@@ -18,6 +18,8 @@ lint:
   image: golangci/golangci-lint:${GO_LINTER_VERSION}-alpine
   script:
     - golangci-lint run -c .golangci.yml --timeout=5m
+  rules:
+    - when: always 
 
 test:
   stage: test
@@ -25,6 +27,8 @@ test:
   script:
     - apk add --no-cache gcc musl-dev
     - go test -race -cover -count=1 ./...
+  rules:
+    - when: always 
 
 build:
   stage: build
