@@ -2,6 +2,7 @@
 variables:
   GO_VERSION: "1.25"
   GO_LINTER_VERSION: "v2.10"
+  GOLANG_IMAGE: golang:${GO_VERSION}-alpine
   GOPATH: "$CI_PROJECT_DIR/.go"
 
 cache:
@@ -23,16 +24,18 @@ lint:
 
 test:
   stage: test
-  image: golang:${GO_VERSION}-alpine
+  image: ${GOLANG_IMAGE}
   script:
     - apk add --no-cache gcc musl-dev
-    - go test -race -cover -count=1 ./...
+    - go test -race -coverprofile=coverage.out ./...
+    - go tool cover -func=coverage.out
+  coverage: '/total:\s+\(statements\)\s+(\d+.\d+)%/'
   rules:
     - when: always 
 
 build:
   stage: build
-  image: golang:${GO_VERSION}-alpine
+  image: ${GOLANG_IMAGE}
   script:
     - mkdir -p bin
     - for d in cmd/*; do
@@ -41,6 +44,6 @@ build:
         go build -o "bin/$name" "./cmd/$name";
       done
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: $CI_MERGE_REQUEST_ID
     - if: '$CI_COMMIT_BRANCH =~ /^(master|main)$/'
     - when: never
