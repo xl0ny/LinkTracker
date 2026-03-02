@@ -28,7 +28,7 @@ func Run(cfg *config.Config) {
 
 	bot := telegram.NewBot(api)
 
-	setMenuCommands(api, commands.All())
+	bot.SetMenuCommands(commands.All())
 
 	actions := bot.ReceiveUpdates(ctx)
 	dispatcher := application.NewDispatcher(commands.All())
@@ -39,24 +39,4 @@ func Run(cfg *config.Config) {
 	<-ctx.Done()
 	slog.Info("shutting down", slog.String("event", "shutdown"))
 	os.Exit(0)
-}
-
-func setMenuCommands(api *tgbotapi.BotAPI, cmds []commands.Command) {
-	botCommands := make([]tgbotapi.BotCommand, 0, len(cmds))
-	for _, c := range cmds {
-		botCommands = append(botCommands, tgbotapi.BotCommand{
-			Command:     c.Name(),
-			Description: c.Description(),
-		})
-	}
-	resp, err := api.Request(tgbotapi.NewSetMyCommands(botCommands...))
-	if err != nil {
-		slog.Warn("failed to set commands menu", slog.String("error", err.Error()), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
-		return
-	}
-	if !resp.Ok {
-		slog.Warn("setMyCommands API response not Ok", slog.String("description", resp.Description), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
-		return
-	}
-	slog.Info("commands menu set", slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
 }

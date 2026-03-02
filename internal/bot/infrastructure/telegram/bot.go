@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/commands"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
@@ -53,4 +54,24 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 		}
 	}()
 	return ch
+}
+
+func (bot *bot) SetMenuCommands(cmds []commands.Command) {
+	botCommands := make([]tgbotapi.BotCommand, 0, len(cmds))
+	for _, c := range cmds {
+		botCommands = append(botCommands, tgbotapi.BotCommand{
+			Command:     c.Name(),
+			Description: c.Description(),
+		})
+	}
+	resp, err := bot.api.Request(tgbotapi.NewSetMyCommands(botCommands...))
+	if err != nil {
+		slog.Warn("failed to set commands menu", slog.String("error", err.Error()), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
+		return
+	}
+	if !resp.Ok {
+		slog.Warn("setMyCommands API response not Ok", slog.String("description", resp.Description), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
+		return
+	}
+	slog.Info("commands menu set", slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
 }
