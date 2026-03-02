@@ -6,6 +6,10 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
+type sender interface {
+	SendMessage(chatid int64, message string) error
+}
+
 func Worker(actions <-chan domain.Action, d *Dispatcher, s sender) {
 	for action := range actions {
 		text, send := d.Dispatch(action)

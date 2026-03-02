@@ -1,61 +1,10 @@
-# Секреты и окружение
+# Секреты
 .env
 .env.*
-!.env.example
 
-# Cursor IDE
-.cursor/
-*.cursor
-
-# Go
+# Бинарники
 bin/
-vendor/
-*.exe
-# Бинарники из cmd/ (если собирать из корня: go build ./cmd/...)
-/bot
-/report
-/scrapper
-/agent
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-go.work
-go.work.sum
-/coverage.html
-/coverage.out
 
-# Go build cache
-.cache/
-
-# IDE и редакторы
-.idea/
-*.iml
-.vscode/
-*.swp
-*.swo
-*~
-.project
-.classpath
-.settings/
-.cursor/
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-._*
-
-# Временные и логи
-tmp/
-temp/
-*.log
-*.tmp
-*.bak
-*.orig
-
-# Модули и кэш (если используешь локальные инструменты)
-/dist/
-/build/
+# Тесты
+coverage.out
+coverage.html

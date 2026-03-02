@@ -16,8 +16,8 @@ import (
 
 const workerCount = 5
 
-func Run(cfg *config.Config) {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+func Run(ctx context.Context, cfg *config.Config) {
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	api, err := tgbotapi.NewBotAPI(cfg.TelegramToken)
 	if err != nil {

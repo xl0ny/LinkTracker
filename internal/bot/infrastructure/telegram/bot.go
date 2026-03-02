@@ -33,7 +33,7 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 	u := tgbotapi.NewUpdate(0)
 	apiUpdates := bot.api.GetUpdatesChan(u)
 
-	go func() {
+	go func(ctx context.Context) {
 		slog.Info("updates receiving started", slog.String("event", "updates_started"))
 		defer close(ch)
 		for {
@@ -52,7 +52,7 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 				}
 			}
 		}
-	}()
+	}(ctx)
 	return ch
 }
 
