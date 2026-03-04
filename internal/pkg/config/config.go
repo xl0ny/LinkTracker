@@ -13,13 +13,10 @@ import (
 
 type Config struct {
 	TelegramToken string `envconfig:"APP_TELEGRAM_TOKEN" required:"true"`
-	LoggingLevel  slog.Level
-}
-
-type LoggingConfig struct {
-	Logging struct {
+	Logging       struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
+	LoggingLevel slog.Level
 }
 
 func Load() (*Config, error) {
@@ -38,17 +35,16 @@ func Load() (*Config, error) {
 	}
 
 	//logginпg level
-	var loggingConfig LoggingConfig
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
 		slog.Error("failed to load config, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 	}
 
-	err = yaml.Unmarshal(data, &loggingConfig)
+	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		slog.Error("logging format in confilg.yaml incorrect, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 	}
-	if strings.EqualFold(loggingConfig.Logging.Mode, "DEBUG") {
+	if strings.EqualFold(config.Logging.Mode, "DEBUG") {
 		config.LoggingLevel = slog.LevelDebug
 		slog.Info("setted DEBUG level")
 	} else {
