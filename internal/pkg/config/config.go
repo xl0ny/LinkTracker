@@ -11,53 +11,52 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
-type configRaw struct {
-	TelegramToken string `envconfig:"APP_TELEGRAM_TOKEN" required:"true"`
-}
-
 type Config struct {
-	TelegramToken string
+	TelegramToken string `envconfig:"APP_TELEGRAM_TOKEN" required:"true"`
 	LoggingLevel  slog.Level
 }
 
 type LoggingConfig struct {
-	Mode string `yaml:"mode"`
+	Logging struct {
+		Mode string `yaml:"mode"`
+	} `yaml:"logging"`
 }
 
 func Load() (*Config, error) {
-	//telegram token
 	if err := godotenv.Load(); err != nil {
 		return nil, fmt.Errorf("config loading error:")
 	}
 
-	var raw configRaw
-	if err := envconfig.Process("", &raw); err != nil {
+	var config Config
+	if err := envconfig.Process("", &config); err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
 
-	token := strings.TrimSpace(raw.TelegramToken)
-	if !isValidTelegramTokenFormat(token) {
+	config.TelegramToken = strings.TrimSpace(config.TelegramToken)
+	if !isValidTelegramTokenFormat(config.TelegramToken) {
 		return nil, fmt.Errorf("APP_TELEGRAM_TOKEN invalid format (expected <number>:<string>)")
 	}
-	//loggin level
-	var level slog.Level
+
+	//logginпg level
 	var loggingConfig LoggingConfig
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
-		slog.Error("failed to load config", slog.String("error", err.Error()), slog.String("stage", "config_load"))
+		slog.Error("failed to load config, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 	}
 
 	err = yaml.Unmarshal(data, &loggingConfig)
-	if os.Getenv("DEBUG") == "1" {
-		level = slog.LevelDebug
+	if err != nil {
+		slog.Error("logging format in confilg.yaml incorrect, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
+	}
+	if strings.EqualFold(loggingConfig.Logging.Mode, "DEBUG") {
+		config.LoggingLevel = slog.LevelDebug
+		slog.Info("setted DEBUG level")
 	} else {
-		level = slog.LevelInfo
+		config.LoggingLevel = slog.LevelInfo
+		slog.Info("setted INFO level")
 	}
 
-	return &Config{
-		TelegramToken: token,
-		LoggingLevel:  level,
-	}, nil
+	return &config, nil
 }
 
 func isValidTelegramTokenFormat(token string) bool {

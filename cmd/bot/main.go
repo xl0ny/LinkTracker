@@ -6,18 +6,19 @@ import (
 	"os"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/app"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/pkg/config"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/pkg/logging"
 )
 
 func main() {
 	cfg, err := config.Load()
-	ctx := context.Background()
 	if err != nil {
 		slog.Error("failed to load config", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 		os.Exit(1)
 	}
+
 	slog.SetDefault(slog.New(logging.NewHandler(cfg.LoggingLevel)))
 
+	ctx := context.Background()
 	app.Run(ctx, cfg)
 }
