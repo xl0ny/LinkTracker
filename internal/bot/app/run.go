@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
-	commands "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/telegram"
 )
@@ -21,10 +21,14 @@ func Run(ctx context.Context, cfg *config.Config) {
 
 	bot := telegram.NewBot(cfg.TelegramToken)
 
-	bot.SetMenuCommands(commands.All())
+	commands := []command.Command{
+		command.Start{},
+		command.Help{},
+	}
+	bot.SetMenuCommands(commands)
 
 	actions := bot.ReceiveUpdates(ctx)
-	dispatcher := application.NewDispatcher(commands.All())
+	dispatcher := application.NewDispatcher(commands)
 
 	for range workerCount {
 		go application.Worker(actions, dispatcher, bot)
