@@ -39,3 +39,11 @@ test:
 run-bot:
 	@echo "Running bot"
 	@go run ./cmd/bot/main.go
+
+.PHONY: generate-api
+generate-api:
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,chi-server -package api -o internal/bot/transport/http/api/openapi_gen.go internal/bot/api/contract.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,client     -package botclient -o internal/scrapper/infrastructure/botclient/openapi_client_gen.go internal/bot/api/contract.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,chi-server -package api -o internal/scrapper/transport/http/api/openapi_gen.go internal/scrapper/api/contract.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,client     -package scrapperclient -o internal/bot/infrastructure/scrapperclient/openapi_client_gen.go internal/scrapper/api/contract.yaml
+	@echo "API generated"
