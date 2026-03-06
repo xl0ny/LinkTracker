@@ -9,7 +9,7 @@ import (
 )
 
 func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
-	d := NewDispatcher([]command.Command{command.Start{}})
+	d := NewDispatcher([]Command{command.Start{}})
 	action := domain.Action{Command: "start"}
 	text, send := d.Dispatch(action)
 	if !send {
@@ -22,7 +22,7 @@ func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
-	d := NewDispatcher([]command.Command{command.Help{}})
+	d := NewDispatcher([]Command{command.Help{}})
 	action := domain.Action{Command: "help"}
 	text, send := d.Dispatch(action)
 	if !send {
@@ -34,7 +34,7 @@ func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
-	d := NewDispatcher([]command.Command{})
+	d := NewDispatcher([]Command{})
 	action := domain.Action{Command: "unknowncommand"}
 	text, send := d.Dispatch(action)
 	if !send {
@@ -46,7 +46,7 @@ func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_emptyCommand_noResponse(t *testing.T) {
-	d := NewDispatcher([]command.Command{})
+	d := NewDispatcher([]Command{})
 	action := domain.Action{Command: ""}
 	text, send := d.Dispatch(action)
 	if send {

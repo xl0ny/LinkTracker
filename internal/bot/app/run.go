@@ -21,7 +21,7 @@ func Run(ctx context.Context, cfg *config.Config) {
 
 	bot := telegram.NewBot(cfg.TelegramToken)
 
-	commands := []command.Command{
+	commands := []application.Command{
 		command.Start{},
 		command.Help{},
 	}
