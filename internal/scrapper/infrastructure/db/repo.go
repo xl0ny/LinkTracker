@@ -1,5 +1,7 @@
 package db
 
+import "fmt"
+
 type reposiotory struct {
 	Chats map[int]struct{}
 }
@@ -13,7 +15,16 @@ func (r *reposiotory) AddChat(id int) error {
 		r.Chats[id] = struct{}{}
 		return nil
 	}
+	return fmt.Errorf("chat already exists")
 
+}
+
+func (r *reposiotory) DeleteChat(id int) error {
+	if r.exists(id) {
+		delete(r.Chats, id)
+		return nil
+	}
+	return fmt.Errorf("chat already exists")
 }
 
 func (r *reposiotory) exists(id int) bool {
