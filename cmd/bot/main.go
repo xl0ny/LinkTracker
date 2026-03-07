@@ -16,7 +16,7 @@ func main() {
 		slog.Error("failed to load config", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 		os.Exit(1)
 	}
-	level := cfg.GetLevel()
+	level := cfg.Logging.GetLevel()
 	slog.SetDefault(slog.New(logging.NewHandler(level)))
 	slog.Info("level set", "level", level)
 
