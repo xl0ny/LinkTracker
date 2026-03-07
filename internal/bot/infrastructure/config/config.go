@@ -17,13 +17,11 @@ type Config struct {
 }
 
 type LoggingConfig struct {
-	Logging struct {
-		Mode string `yaml:"mode"`
-	} `yaml:"logging"`
+	Mode string `yaml:"mode"`
 }
 
 func (c *LoggingConfig) GetLevel() slog.Level {
-	if strings.EqualFold(c.Logging.Mode, "DEBUG") {
+	if strings.EqualFold(c.Mode, "DEBUG") {
 		return slog.LevelDebug
 	}
 	return slog.LevelInfo
@@ -50,13 +48,10 @@ func Load() (*Config, error) {
 		slog.Error("failed to load config, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 	}
 
-	var LoggingConfig LoggingConfig
-	err = yaml.Unmarshal(data, &LoggingConfig)
+	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		slog.Error("logging format in confilg.yaml incorrect, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 	}
-
-	config.Logging = LoggingConfig
 
 	return &config, nil
 }
