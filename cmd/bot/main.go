@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/app"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/config"
@@ -20,6 +22,9 @@ func main() {
 	slog.SetDefault(slog.New(logging.NewHandler(level)))
 	slog.Info("level set", "level", level)
 
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 	app.Run(ctx, cfg)
+	slog.Info("shutting down", slog.String("event", "shutdown"))
+	os.Exit(0)
 }
