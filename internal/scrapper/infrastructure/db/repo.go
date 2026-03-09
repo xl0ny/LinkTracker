@@ -1,16 +1,19 @@
 package db
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 type reposiotory struct {
-	Chats map[int]struct{}
+	Chats map[int64]struct{}
 }
 
 func (r *reposiotory) NewRepository() *reposiotory {
 	return &reposiotory{}
 }
 
-func (r *reposiotory) AddChat(id int) error {
+func (r *reposiotory) AddChat(ctx context.Context, id int64) error {
 	if !r.exists(id) {
 		r.Chats[id] = struct{}{}
 		return nil
@@ -19,15 +22,15 @@ func (r *reposiotory) AddChat(id int) error {
 
 }
 
-func (r *reposiotory) DeleteChat(id int) error {
+func (r *reposiotory) DeleteChat(ctx context.Context, id int64) error {
 	if r.exists(id) {
 		delete(r.Chats, id)
 		return nil
 	}
-	return fmt.Errorf("chat already exists")
+	return fmt.Errorf("chat not found")
 }
 
-func (r *reposiotory) exists(id int) bool {
+func (r *reposiotory) exists(id int64) bool {
 	_, ok := r.Chats[id]
 	return ok
 }
