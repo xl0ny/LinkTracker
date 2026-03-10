@@ -24,7 +24,10 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	app.Run(ctx, cfg)
+	if err := app.Run(ctx, cfg); err != nil {
+		slog.Error("bot initialization", slog.String("error", err.Error()), slog.String("event", "bot_init"))
+	}
+
 	slog.Info("shutting down", slog.String("event", "shutdown"))
 	os.Exit(0)
 }

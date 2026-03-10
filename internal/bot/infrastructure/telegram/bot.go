@@ -20,7 +20,6 @@ func NewBot(telegramToken string) (*bot, error) {
 	if err != nil {
 		return nil, err
 	}
-	slog.Info("bot authorized", slog.String("bot_username", api.Self.UserName), slog.String("event", "authorized"))
 
 	return &bot{
 		api: api,

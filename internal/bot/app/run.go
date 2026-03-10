@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"log/slog"
-	"os"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
@@ -13,11 +11,10 @@ import (
 
 const workerCount = 5
 
-func Run(ctx context.Context, cfg *config.Config) {
+func Run(ctx context.Context, cfg *config.Config) error {
 	bot, err := telegram.NewBot(cfg.TelegramToken)
 	if err != nil {
-		slog.Error("bot initialization", slog.String("error", err.Error()), slog.String("event", "bot_init"))
-		os.Exit(1)
+		return err
 	}
 
 	commands := []application.Command{
@@ -33,4 +30,5 @@ func Run(ctx context.Context, cfg *config.Config) {
 		go application.Worker(actions, dispatcher, bot)
 	}
 	<-ctx.Done()
+	return nil
 }
