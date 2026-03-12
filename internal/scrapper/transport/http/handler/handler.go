@@ -2,17 +2,20 @@ package handler
 
 import (
 	"context"
-	"log/slog"
+	"encoding/json"
 	"net/http"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/httputil/helper"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/api"
 )
 
 type UseCase interface {
 	chatRegistration(ctx context.Context, id int64) error
 	chatDelition(ctx context.Context, id int64) error
-	linkAddment(ctx context.Context, chatId int64) error
+	linkAddment(ctx context.Context, chatId int64, link string, tags, filters *[]string) error
+	GetLinks(ctx context.Context, chatId int64) ([]domain.Link, error)
+	DeleteLink(ctx context.Context, chatId int64, linkURL string) (domain.Link, error)
 }
 
 type Handler struct {
@@ -26,40 +29,223 @@ func NewHandler(uc UseCase) *Handler {
 }
 
 func (h *Handler) PostTgChatId(w http.ResponseWriter, r *http.Request, id int64) {
-	if err := h.uc.chatRegistration(r.Context(), id); err.Error() == "chat already exists" {
-		slog.Error("failed to registrate chat", slog.String("error", err.Error()))
-		code := "CHAT_ALREADY_EXISTS"
-		desc := "Чат уже зарегистрирован"
-		excp := "ErrChatAlreadyExists"
-		helper.WriteJSON(w, 409, api.ApiErrorResponse{
-			Code:             &code,
-			Description:      &desc,
-			ExceptionMessage: helper.Ptr(err.Error()),
-			ExceptionName:    &excp,
-		})
+	if err := h.uc.chatRegistration(r.Context(), id); err != nil {
+		if err.Error() == "chat already exists" {
+			helper.WriteError(
+				w,
+				http.StatusConflict,
+				"failed to registrate chat",
+				"CHAT_ALREADY_EXISTS",
+				"Чат уже зарегистрирован",
+				"ErrChatAlreadyExists",
+				err.Error(),
+			)
+			return
+		}
+		helper.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"failed to registrate chat",
+			"INTERNAL_ERROR",
+			"Внутренняя ошибка",
+			"ErrInternal",
+			err.Error(),
+		)
+		return
 	}
-	w.WriteHeader(200)
-
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) DeleteTgChatId(w http.ResponseWriter, r *http.Request, id int64) {
-	if err := h.uc.chatDelition(r.Context(), id); err.Error() == "chat not found" {
-		slog.Error("failed to delete chat", slog.String("error", err.Error()))
-		code := "CHAT_NOT_FOUND"
-		desc := "Чат не найден"
-		excp := "ErrChatNotFound"
-		helper.WriteJSON(w, 409, api.ApiErrorResponse{
-			Code:             &code,
-			Description:      &desc,
-			ExceptionMessage: helper.Ptr(err.Error()),
-			ExceptionName:    &excp,
-		})
-		w.WriteHeader(200)
+	if err := h.uc.chatDelition(r.Context(), id); err != nil {
+		if err.Error() == "chat not found" {
+			helper.WriteError(
+				w,
+				http.StatusNotFound,
+				"failed to delete chat",
+				"CHAT_NOT_FOUND",
+				"Чат не найден",
+				"ErrChatNotFound",
+				err.Error(),
+			)
+			return
+		}
+		helper.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"failed to delete chat",
+			"INTERNAL_ERROR",
+			"Внутренняя ошибка",
+			"ErrInternal",
+			err.Error(),
+		)
+		return
 	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) PostLinks(w http.ResponseWriter, r *http.Request, params api.PostLinksParams) {
-	if err := h.uc.linkAddment(r.Context(), params.TgChatId); err.Error() == "" {
-
+	var body api.AddLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		helper.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid request body",
+			"BAD_REQUEST",
+			"Некорректное тело запроса",
+			"ErrBadRequest",
+			err.Error(),
+		)
+		return
 	}
+
+	if body.Link == nil || *body.Link == "" {
+		helper.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid request body",
+			"BAD_REQUEST",
+			"Ссылка обязательна",
+			"ErrBadRequest",
+			"link is required",
+		)
+		return
+	}
+	if err := h.uc.linkAddment(r.Context(), params.TgChatId, *body.Link, body.Tags, body.Filters); err != nil {
+		if err.Error() == "link already exists" {
+			helper.WriteError(
+				w,
+				http.StatusConflict,
+				"failed to add link",
+				"LINK_ALREADY_EXISTS",
+				"Ссылка уже отслеживается",
+				"ErrLinkAlreadyExists",
+				err.Error(),
+			)
+			return
+		}
+		if err.Error() == "chat not found" {
+			helper.WriteError(
+				w,
+				http.StatusNotFound,
+				"failed to add link",
+				"CHAT_NOT_FOUND",
+				"Чат не найден",
+				"ErrChatNotFound",
+				err.Error(),
+			)
+			return
+		}
+		helper.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"failed to add link",
+			"INTERNAL_ERROR",
+			"Внутренняя ошибка",
+			"ErrInternal",
+			err.Error(),
+		)
+		return
+	}
+	url, tags, filters := *body.Link, []string{}, []string{}
+	if body.Tags != nil {
+		tags = *body.Tags
+	}
+	if body.Filters != nil {
+		filters = *body.Filters
+	}
+	helper.WriteJSON(w, http.StatusOK, api.LinkResponse{
+		Url:     &url,
+		Tags:    &tags,
+		Filters: &filters,
+	})
+}
+
+func (h *Handler) GetLinks(w http.ResponseWriter, r *http.Request, params api.GetLinksParams) {
+	links, err := h.uc.GetLinks(r.Context(), params.TgChatId)
+	if err != nil && err.Error() == "chat not found" {
+		helper.WriteError(
+			w,
+			http.StatusNotFound,
+			"failed to get links",
+			"CHAT_NOT_FOUND",
+			"Чат не найден",
+			"ErrChatNotFound",
+			err.Error(),
+		)
+		return
+	}
+	apiLinks := make([]api.LinkResponse, len(links))
+	for i, l := range links {
+		url, tags, filters := l.URL, l.Tags, l.Filters
+		apiLinks[i] = api.LinkResponse{
+			Url:     &url,
+			Tags:    &tags,
+			Filters: &filters,
+		}
+	}
+	size := int32(len(apiLinks))
+	helper.WriteJSON(w, http.StatusOK, api.ListLinksResponse{
+		Links: &apiLinks,
+		Size:  &size,
+	})
+}
+
+func (h *Handler) DeleteLinks(w http.ResponseWriter, r *http.Request, params api.DeleteLinksParams) {
+	var body api.RemoveLinkRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		helper.WriteError(
+			w,
+			http.StatusBadRequest,
+			"invalid request body",
+			"BAD_REQUEST",
+			"Некорректное тело запроса",
+			"ErrBadRequest",
+			err.Error(),
+		)
+		return
+	}
+	if body.Link == nil || *body.Link == "" {
+		helper.WriteError(
+			w,
+			http.StatusBadRequest,
+			"link is required",
+			"BAD_REQUEST",
+			"Ссылка обязательна",
+			"ErrBadRequest",
+			"link is required",
+		)
+		return
+	}
+	removed, err := h.uc.DeleteLink(r.Context(), params.TgChatId, *body.Link)
+	if err != nil {
+		if err.Error() == "chat not found" || err.Error() == "link not found" {
+			helper.WriteError(
+				w,
+				http.StatusNotFound,
+				"failed to remove link",
+				"NOT_FOUND",
+				"Чат не найден или ссылка не найдена",
+				"ErrNotFound",
+				err.Error(),
+			)
+			return
+		}
+		helper.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"failed to remove link",
+			"INTERNAL_ERROR",
+			"Внутренняя ошибка",
+			"ErrInternal",
+			err.Error(),
+		)
+		return
+	}
+	url, tags, filters := removed.URL, removed.Tags, removed.Filters
+	helper.WriteJSON(w, http.StatusOK, api.LinkResponse{
+		Url:     &url,
+		Tags:    &tags,
+		Filters: &filters,
+	})
 }
