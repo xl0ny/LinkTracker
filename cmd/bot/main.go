@@ -1,1 +1,5 @@
-package bot
+package main
+
+func main() {
+	// TODO
+}
