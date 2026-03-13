@@ -1,16 +1,21 @@
 package application
 
 import (
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/commands"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
-type Dispatcher struct {
-	handlers map[string]commands.Command
+type Command interface {
+	Name() string
+	Description() string
+	Handle(action domain.Action) (response string, send bool)
 }
 
-func NewDispatcher(cmds []commands.Command) *Dispatcher {
-	h := make(map[string]commands.Command, len(cmds))
+type Dispatcher struct {
+	handlers map[string]Command
+}
+
+func NewDispatcher(cmds []Command) *Dispatcher {
+	h := make(map[string]Command, len(cmds))
 	for _, c := range cmds {
 		h[c.Name()] = c
 	}

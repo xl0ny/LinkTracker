@@ -1,16 +1,15 @@
-package application_test
+package application
 
 import (
 	"strings"
 	"testing"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/commands"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
 func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
-	d := application.NewDispatcher(commands.All())
+	d := NewDispatcher([]Command{command.Start{}})
 	action := domain.Action{Command: "start"}
 	text, send := d.Dispatch(action)
 	if !send {
@@ -23,7 +22,7 @@ func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
-	d := application.NewDispatcher(commands.All())
+	d := NewDispatcher([]Command{command.Help{}})
 	action := domain.Action{Command: "help"}
 	text, send := d.Dispatch(action)
 	if !send {
@@ -35,7 +34,7 @@ func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
-	d := application.NewDispatcher(commands.All())
+	d := NewDispatcher([]Command{})
 	action := domain.Action{Command: "unknowncommand"}
 	text, send := d.Dispatch(action)
 	if !send {
@@ -47,7 +46,7 @@ func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_emptyCommand_noResponse(t *testing.T) {
-	d := application.NewDispatcher(commands.All())
+	d := NewDispatcher([]Command{})
 	action := domain.Action{Command: ""}
 	text, send := d.Dispatch(action)
 	if send {

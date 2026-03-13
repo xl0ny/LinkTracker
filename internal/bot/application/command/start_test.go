@@ -1,28 +1,27 @@
-package commands_test
+package command
 
 import (
 	"testing"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/commands"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
 func TestStart_Name(t *testing.T) {
-	var cmd commands.Start
+	var cmd Start
 	if got := cmd.Name(); got != "start" {
 		t.Errorf("Name() = %q, want %q", got, "start")
 	}
 }
 
 func TestStart_Description(t *testing.T) {
-	var cmd commands.Start
+	var cmd Start
 	if got := cmd.Description(); got == "" {
 		t.Error("Description() must be non-empty")
 	}
 }
 
 func TestStart_Handle_returnsWelcomeMessage(t *testing.T) {
-	var cmd commands.Start
+	var cmd Start
 	action := domain.Action{Command: "start"}
 	text, send := cmd.Handle(action)
 	if !send {

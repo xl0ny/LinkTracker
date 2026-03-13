@@ -3,9 +3,10 @@ package telegram
 import (
 	"context"
 	"log/slog"
+	"os"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/commands"
+	commands "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
@@ -15,7 +16,14 @@ type bot struct {
 	api *tgbotapi.BotAPI
 }
 
-func NewBot(api *tgbotapi.BotAPI) *bot {
+func NewBot(telegramToken string) *bot {
+	api, err := tgbotapi.NewBotAPI(telegramToken)
+	if err != nil {
+		slog.Error("bot initialization", slog.String("error", err.Error()), slog.String("event", "bot_init"))
+		os.Exit(1)
+	}
+	slog.Info("bot authorized", slog.String("bot_username", api.Self.UserName), slog.String("event", "authorized"))
+
 	return &bot{
 		api: api,
 	}
