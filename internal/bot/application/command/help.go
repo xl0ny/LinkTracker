@@ -11,5 +11,5 @@ func (Help) Name() string { return "help" }
 func (Help) Description() string { return "Список доступных команд" }
 
 func (Help) Handle(action domain.Action) (string, bool) {
-	return "/start — начало работы\n/help — список команд", true
+	return "/start — начало работы\n/help — список команд\n/track — добавить ссылку\n/untrack — убрать ссылку\n/list — список ссылок", true
 }

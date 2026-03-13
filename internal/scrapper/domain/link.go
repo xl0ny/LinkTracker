@@ -1,7 +1,10 @@
 package domain
 
+import "time"
+
 type Link struct {
-	URL     string
-	Tags    []string
-	Filters []string
+	URL         string
+	Tags        []string
+	Filters     []string
+	LastUpdated time.Time
 }

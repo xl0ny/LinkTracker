@@ -47,7 +47,6 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 		for {
 			select {
 			case <-ctx.Done():
-				close(ch)
 				return
 			case update := <-apiUpdates:
 				if update.Message == nil {
@@ -57,6 +56,7 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 					ChatID:  update.Message.Chat.ID,
 					Command: update.Message.Command(),
 					Text:    update.Message.Text,
+					Args:    update.Message.CommandArguments(),
 				}
 			}
 		}

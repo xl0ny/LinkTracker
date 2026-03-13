@@ -1,6 +1,8 @@
 package application
 
 import (
+	"context"
+
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
@@ -10,24 +12,40 @@ type Command interface {
 	Handle(action domain.Action) (response string, send bool)
 }
 
-type Dispatcher struct {
-	handlers map[string]Command
+type TrackContinuationHandler interface {
+	HandleContinuation(ctx context.Context, action domain.Action, state *TrackState) (response string, send bool, newState *TrackState)
 }
 
-func NewDispatcher(cmds []Command) *Dispatcher {
+type Dispatcher struct {
+	handlers map[string]Command
+	track    TrackContinuationHandler
+	state    *TrackStateStore
+}
+
+func NewDispatcher(cmds []Command, track TrackContinuationHandler, state *TrackStateStore) *Dispatcher {
 	h := make(map[string]Command, len(cmds))
 	for _, c := range cmds {
 		h[c.Name()] = c
 	}
-	return &Dispatcher{handlers: h}
+	return &Dispatcher{handlers: h, track: track, state: state}
 }
 
 func (d *Dispatcher) Dispatch(action domain.Action) (text string, send bool) {
-	if action.Command == "" {
-		return "", false
+	if action.Command != "" {
+		d.state.Clear(action.ChatID)
+		if action.Command == "cancel" {
+			return "Отменено.", true
+		}
+		if cmd, ok := d.handlers[action.Command]; ok {
+			return cmd.Handle(action)
+		}
+		return "Неизвестная команда. Используйте /help для списка команд", true
 	}
-	if cmd, ok := d.handlers[action.Command]; ok {
-		return cmd.Handle(action)
+	st := d.state.Get(action.ChatID)
+	if st != nil && d.track != nil {
+		resp, send, newSt := d.track.HandleContinuation(context.Background(), action, st)
+		d.state.Set(action.ChatID, newSt)
+		return resp, send
 	}
-	return "Неизвестная команда. Используйте /help для списка команд", true
+	return "", false
 }

@@ -1,55 +1,52 @@
 package application
 
 import (
-	"strings"
 	"testing"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
+type fakeCmd struct {
+	name, desc, reply string
+}
+
+func (f fakeCmd) Name() string        { return f.name }
+func (f fakeCmd) Description() string { return f.desc }
+func (f fakeCmd) Handle(domain.Action) (string, bool) { return f.reply, true }
+
 func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
-	d := NewDispatcher([]Command{command.Start{}})
+	d := NewDispatcher([]Command{fakeCmd{"start", "", "Добро пожаловать! Используйте /help для списка команд."}}, nil, NewTrackStateStore())
 	action := domain.Action{Command: "start"}
 	text, send := d.Dispatch(action)
-	if !send {
-		t.Fatal("Dispatch(start) must return send=true")
-	}
-	want := "Добро пожаловать! Используйте /help"
-	if !strings.Contains(text, want) {
-		t.Errorf("Dispatch(start) = %q, want substring %q", text, want)
-	}
+	require.True(t, send)
+	assert.Contains(t, text, "Добро пожаловать! Используйте /help")
 }
 
 func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
-	d := NewDispatcher([]Command{command.Help{}})
+	d := NewDispatcher([]Command{fakeCmd{"help", "", "/start\n/help"}}, nil, NewTrackStateStore())
 	action := domain.Action{Command: "help"}
 	text, send := d.Dispatch(action)
-	if !send {
-		t.Fatal("Dispatch(help) must return send=true")
-	}
-	if !strings.Contains(text, "/start") || !strings.Contains(text, "/help") {
-		t.Errorf("Dispatch(help) must contain /start and /help, got %q", text)
-	}
+	require.True(t, send)
+	assert.Contains(t, text, "/start")
+	assert.Contains(t, text, "/help")
 }
 
 func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
-	d := NewDispatcher([]Command{})
+	d := NewDispatcher([]Command{}, nil, NewTrackStateStore())
 	action := domain.Action{Command: "unknowncommand"}
 	text, send := d.Dispatch(action)
-	if !send {
-		t.Fatal("Dispatch(unknown) must return send=true (error message)")
-	}
-	if !strings.Contains(text, "Неизвестная команда") || !strings.Contains(text, "/help") {
-		t.Errorf("Dispatch(unknown) must mention unknown command and /help, got %q", text)
-	}
+	require.True(t, send)
+	assert.Contains(t, text, "Неизвестная команда")
+	assert.Contains(t, text, "/help")
 }
 
 func TestDispatcher_Dispatch_emptyCommand_noResponse(t *testing.T) {
-	d := NewDispatcher([]Command{})
+	d := NewDispatcher([]Command{}, nil, NewTrackStateStore())
 	action := domain.Action{Command: ""}
 	text, send := d.Dispatch(action)
-	if send {
-		t.Errorf("Dispatch(empty command) must return send=false, got send=true, text=%q", text)
-	}
+	assert.False(t, send)
+	assert.Empty(t, text)
 }

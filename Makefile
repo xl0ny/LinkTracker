@@ -4,12 +4,15 @@ COVERAGE_FILE ?= coverage.out
 MODULES := $(notdir $(wildcard cmd/*))
 
 # Help target - display usage information
+GOLANGCI_LINT = $(shell go env GOPATH)/bin/golangci-lint
+
 .PHONY: help
 help:
 	@echo "Available commands:"
 	@echo "  \033[36mmake build\033[0m - Build all modules ($(MODULES))"
 	@$(foreach mod,$(MODULES),echo "  \033[36mmake build_$(mod)\033[0m - Build $(mod) module";)
 	@echo "  \033[36mmake test\033[0m - Run all tests"
+	@echo "  \033[36mmake lint\033[0m - Run golangci-lint"
 
 .PHONY: build
 build:
@@ -35,10 +38,20 @@ test:
 	@go test -coverpkg='gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/...' --race -count=1 -coverprofile='$(COVERAGE_FILE)' ./...
 	@go tool cover -func='$(COVERAGE_FILE)' | grep ^total | tr -s '\t'
 
+.PHONY: lint
+lint:
+	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || (echo "golangci-lint v2 not found. Run: go install github.com/golangci/golangci-lint/v2@latest" && exit 1)
+	@$(GOLANGCI_LINT) run -c .golangci.yml --timeout=5m
+
 .PHONY: run-bot
 run-bot:
 	@echo "Running bot"
 	@go run ./cmd/bot/main.go
+
+.PHONY: run-scrapper
+run-scrapper:
+	@echo "Running scrapper"
+	@go run ./cmd/scrapper/main.go
 
 .PHONY: generate-api
 generate-api:

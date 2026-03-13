@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/model"
@@ -100,8 +101,23 @@ func (r *repository) exists(id int64) bool {
 	return ok
 }
 
+func (r *repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error {
+	chat, ok := r.Chats[chatID]
+	if !ok {
+		return fmt.Errorf("chat not found")
+	}
+	for i := range chat.Links {
+		if chat.Links[i].URL == linkURL {
+			chat.Links[i].LastUpdated = t
+			r.Chats[chatID] = chat
+			return nil
+		}
+	}
+	return fmt.Errorf("link not found")
+}
+
 func toDomainLink(l model.Link) domain.Link {
-	return domain.Link{URL: l.URL, Tags: l.Tags, Filters: l.Filters}
+	return domain.Link{URL: l.URL, Tags: l.Tags, Filters: l.Filters, LastUpdated: l.LastUpdated}
 }
 
 func toDomainLinks(links []model.Link) []domain.Link {
