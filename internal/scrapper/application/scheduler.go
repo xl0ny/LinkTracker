@@ -9,7 +9,7 @@ import (
 )
 
 type linksRepo interface {
-	GetAllLinks(ctx context.Context) ([]domain.Link, error)
+	GetChats(ctx context.Context) (map[int64]domain.Chat, error)
 }
 
 type linkChecker interface {
@@ -36,20 +36,21 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 func (s *Scheduler) checkAllLinks(ctx context.Context) {
-	links, err := s.repo.GetAllLinks(ctx)
+	chats, err := s.repo.GetChats(ctx)
 	if err != nil {
-		slog.Error("get links failed", slog.String("error", err.Error()), slog.String("stage", "checkAllLinks"))
+		slog.Error("get chats failed", slog.String("error", err.Error()), slog.String("stage", "checkAllLinks"))
 		return
 	}
-	for _, link := range links {
-		changed, err := s.linkChecker.Check(ctx, link)
-		if err != nil {
-			slog.Warn("check link failed", slog.String("url", link.URL), slog.String("error", err.Error()))
-			continue
-		}
-		if changed {
-			// TODO: определить chatID по ссылке и вызвать s.botNotifier.Notify(ctx, chatID, link)
-			_ = s.botNotifier
+	for _, chat := range chats {
+		for _, link := range chat.Links {
+			changed, err := s.linkChecker.Check(ctx, link)
+			if err != nil {
+				slog.Warn("check link failed", slog.String("url", link.URL), slog.String("error", err.Error()))
+				continue
+			}
+			if changed {
+				s.botNotifier.Notify(ctx, *chat.Id, link)
+			}
 		}
 	}
 }
