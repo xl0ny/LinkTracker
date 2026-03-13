@@ -78,5 +78,5 @@ func (bot *bot) SetMenuCommands(cmds []commands.Command) {
 		slog.Warn("setMyCommands API response not Ok", slog.String("description", resp.Description), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
 		return
 	}
-	slog.Info("commands menu set", slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
+	slog.Info("commands menu set", slog.String("event", "set_commands"))
 }
