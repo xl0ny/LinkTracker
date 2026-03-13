@@ -68,12 +68,15 @@ func (r *repository) GetLinks(ctx context.Context, chatID int64) ([]domain.Link,
 	return toDomainLinks(chat.Links), nil
 }
 
-func (r *repository) GetAllLinks(ctx context.Context) ([]domain.Link, error) {
-	var links []domain.Link
-	for _, chat := range r.Chats {
-		links = append(links, toDomainLinks(chat.Links)...)
+func (r *repository) GetChats(ctx context.Context) (map[int64]domain.Chat, error) {
+	chats := make(map[int64]domain.Chat)
+	for id, chat := range r.Chats {
+		chats[id] = domain.Chat{
+			Id:    chat.Id,
+			Links: toDomainLinks(chat.Links),
+		}
 	}
-	return links, nil
+	return chats, nil
 }
 
 func (r *repository) DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error) {
