@@ -30,7 +30,10 @@ func NewBot(telegramToken string) (*Bot, error) {
 func (bot *Bot) SendMessage(chatid int64, message string) error {
 	msg := tgbotapi.NewMessage(chatid, message)
 	_, err := bot.api.Send(msg)
-	return fmt.Errorf("new bot: %w", err)
+	if err != nil {
+		return fmt.Errorf("send message: %w", err)
+	}
+	return nil
 }
 
 func (bot *Bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
@@ -54,6 +57,7 @@ func (bot *Bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 					ChatID:  update.Message.Chat.ID,
 					Command: update.Message.Command(),
 					Text:    update.Message.Text,
+					Args:    update.Message.CommandArguments(),
 				}
 			}
 		}

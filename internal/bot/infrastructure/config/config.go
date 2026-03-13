@@ -14,6 +14,8 @@ import (
 
 type Config struct {
 	TelegramToken string        `envconfig:"APP_TELEGRAM_TOKEN" required:"true"`
+	ScrapperURL   string        `envconfig:"APP_SCRAPPER_URL"`
+	BotPort       string        `envconfig:"APP_BOT_PORT"`
 	Logging       LoggingConfig `yaml:"logging"`
 }
 
@@ -39,11 +41,20 @@ func Load() (*Config, error) {
 	}
 
 	config.TelegramToken = strings.TrimSpace(config.TelegramToken)
+	config.ScrapperURL = strings.TrimSpace(config.ScrapperURL)
+	if config.ScrapperURL == "" {
+		config.ScrapperURL = "http://localhost:8080"
+		slog.Info("APP_SCRAPPER_URL not set, using default", slog.String("scrapper_url", config.ScrapperURL), slog.String("event", "config_default"))
+	}
+	config.BotPort = strings.TrimSpace(config.BotPort)
+	if config.BotPort == "" {
+		config.BotPort = "8081"
+		slog.Info("APP_BOT_PORT not set, using default", slog.String("port", config.BotPort), slog.String("event", "config_default"))
+	}
 	if !isValidTelegramTokenFormat(config.TelegramToken) {
 		return nil, errors.New("APP_TELEGRAM_TOKEN invalid format (expected <number>:<string>)")
 	}
 
-	// logginпg level
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)

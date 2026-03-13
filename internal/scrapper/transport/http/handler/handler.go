@@ -11,9 +11,9 @@ import (
 )
 
 type UseCase interface {
-	chatRegistration(ctx context.Context, id int64) error
-	chatDelition(ctx context.Context, id int64) error
-	linkAddment(ctx context.Context, chatId int64, link string, tags, filters *[]string) error
+	ChatRegistration(ctx context.Context, id int64) error
+	ChatDelition(ctx context.Context, id int64) error
+	LinkAddment(ctx context.Context, chatId int64, link string, tags, filters *[]string) error
 	GetLinks(ctx context.Context, chatId int64) ([]domain.Link, error)
 	DeleteLink(ctx context.Context, chatId int64, linkURL string) (domain.Link, error)
 }
@@ -29,7 +29,7 @@ func NewHandler(uc UseCase) *Handler {
 }
 
 func (h *Handler) PostTgChatId(w http.ResponseWriter, r *http.Request, id int64) {
-	if err := h.uc.chatRegistration(r.Context(), id); err != nil {
+	if err := h.uc.ChatRegistration(r.Context(), id); err != nil {
 		if err.Error() == "chat already exists" {
 			helper.WriteError(
 				w,
@@ -57,7 +57,7 @@ func (h *Handler) PostTgChatId(w http.ResponseWriter, r *http.Request, id int64)
 }
 
 func (h *Handler) DeleteTgChatId(w http.ResponseWriter, r *http.Request, id int64) {
-	if err := h.uc.chatDelition(r.Context(), id); err != nil {
+	if err := h.uc.ChatDelition(r.Context(), id); err != nil {
 		if err.Error() == "chat not found" {
 			helper.WriteError(
 				w,
@@ -111,7 +111,7 @@ func (h *Handler) PostLinks(w http.ResponseWriter, r *http.Request, params api.P
 		)
 		return
 	}
-	if err := h.uc.linkAddment(r.Context(), params.TgChatId, *body.Link, body.Tags, body.Filters); err != nil {
+	if err := h.uc.LinkAddment(r.Context(), params.TgChatId, *body.Link, body.Tags, body.Filters); err != nil {
 		if err.Error() == "link already exists" {
 			helper.WriteError(
 				w,
@@ -163,14 +163,26 @@ func (h *Handler) PostLinks(w http.ResponseWriter, r *http.Request, params api.P
 
 func (h *Handler) GetLinks(w http.ResponseWriter, r *http.Request, params api.GetLinksParams) {
 	links, err := h.uc.GetLinks(r.Context(), params.TgChatId)
-	if err != nil && err.Error() == "chat not found" {
+	if err != nil {
+		if err.Error() == "chat not found" {
+			helper.WriteError(
+				w,
+				http.StatusNotFound,
+				"failed to get links",
+				"CHAT_NOT_FOUND",
+				"Чат не найден",
+				"ErrChatNotFound",
+				err.Error(),
+			)
+			return
+		}
 		helper.WriteError(
 			w,
-			http.StatusNotFound,
+			http.StatusInternalServerError,
 			"failed to get links",
-			"CHAT_NOT_FOUND",
-			"Чат не найден",
-			"ErrChatNotFound",
+			"INTERNAL_ERROR",
+			"Внутренняя ошибка",
+			"ErrInternal",
 			err.Error(),
 		)
 		return
