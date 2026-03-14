@@ -13,8 +13,10 @@ type fakeCmd struct {
 	name, desc, reply string
 }
 
-func (f fakeCmd) Name() string        { return f.name }
+func (f fakeCmd) Name() string { return f.name }
+
 func (f fakeCmd) Description() string { return f.desc }
+
 func (f fakeCmd) Handle(domain.Action) (string, bool) { return f.reply, true }
 
 func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {

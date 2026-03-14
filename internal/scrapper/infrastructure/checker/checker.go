@@ -2,6 +2,7 @@ package checker
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -12,7 +13,7 @@ import (
 )
 
 type Checker struct {
-	github   *github.Client
+	github    *github.Client
 	stackover *stackoverflow.Client
 }
 
@@ -23,14 +24,22 @@ func New(githubClient *github.Client, stackoverClient *stackoverflow.Client) *Ch
 func (c *Checker) Check(ctx context.Context, link domain.Link) (changed bool, latest time.Time, err error) {
 	u, err := url.Parse(link.URL)
 	if err != nil {
-		return false, time.Time{}, err
+		return false, time.Time{}, fmt.Errorf("parse url: %w", err)
 	}
 	prev := link.LastUpdated
 	switch {
 	case u.Host == "github.com":
-		return c.github.CheckUpdated(ctx, link.URL, prev)
+		changed, latest, err = c.github.CheckUpdated(ctx, link.URL, prev)
+		if err != nil {
+			return false, time.Time{}, fmt.Errorf("github check: %w", err)
+		}
+		return changed, latest, nil
 	case u.Host == "stackoverflow.com" || strings.HasSuffix(u.Host, ".stackoverflow.com"):
-		return c.stackover.CheckUpdated(ctx, link.URL, prev)
+		changed, latest, err = c.stackover.CheckUpdated(ctx, link.URL, prev)
+		if err != nil {
+			return false, time.Time{}, fmt.Errorf("stackoverflow check: %w", err)
+		}
+		return changed, latest, nil
 	default:
 		return false, time.Time{}, nil
 	}

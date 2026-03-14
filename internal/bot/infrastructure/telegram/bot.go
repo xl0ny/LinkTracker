@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -16,6 +17,7 @@ type bot struct {
 	api *tgbotapi.BotAPI
 }
 
+//revive:disable-next-line:unexported-return returning *bot is intentional (internal impl)
 func NewBot(telegramToken string) *bot {
 	api, err := tgbotapi.NewBotAPI(telegramToken)
 	if err != nil {
@@ -32,7 +34,10 @@ func NewBot(telegramToken string) *bot {
 func (bot *bot) SendMessage(chatid int64, message string) error {
 	msg := tgbotapi.NewMessage(chatid, message)
 	_, err := bot.api.Send(msg)
-	return err
+	if err != nil {
+		return fmt.Errorf("send: %w", err)
+	}
+	return nil
 }
 
 func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
@@ -47,6 +52,7 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 		for {
 			select {
 			case <-ctx.Done():
+				close(ch)
 				return
 			case update := <-apiUpdates:
 				if update.Message == nil {

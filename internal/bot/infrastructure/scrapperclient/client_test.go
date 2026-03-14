@@ -22,7 +22,7 @@ func TestNewLinkTracker_whitespaceURL_error(t *testing.T) {
 }
 
 func TestClient_RegisterChat_409_returnsNil(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusConflict)
 	}))
 	defer srv.Close()
@@ -33,7 +33,7 @@ func TestClient_RegisterChat_409_returnsNil(t *testing.T) {
 }
 
 func TestClient_RegisterChat_200_returnsNil(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -44,7 +44,7 @@ func TestClient_RegisterChat_200_returnsNil(t *testing.T) {
 }
 
 func TestClient_RegisterChat_400_returnsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer srv.Close()
@@ -56,7 +56,7 @@ func TestClient_RegisterChat_400_returnsError(t *testing.T) {
 }
 
 func TestClient_AddLink_409_returnsLinkAlreadyExists(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusConflict)
 	}))
 	defer srv.Close()
@@ -68,7 +68,7 @@ func TestClient_AddLink_409_returnsLinkAlreadyExists(t *testing.T) {
 }
 
 func TestClient_AddLink_404_returnsChatNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
@@ -80,7 +80,7 @@ func TestClient_AddLink_404_returnsChatNotFound(t *testing.T) {
 }
 
 func TestClient_ListLinks_404_returnsError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
@@ -93,7 +93,7 @@ func TestClient_ListLinks_404_returnsError(t *testing.T) {
 }
 
 func TestClient_ListLinks_200_emptyBody_returnsNilSlice(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{}`))
@@ -107,7 +107,7 @@ func TestClient_ListLinks_200_emptyBody_returnsNilSlice(t *testing.T) {
 }
 
 func TestClient_ListLinks_200_withLinks_returnsParsed(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"links":[{"url":"https://github.com/x/y","tags":["work"]}]}`))
@@ -123,7 +123,7 @@ func TestClient_ListLinks_200_withLinks_returnsParsed(t *testing.T) {
 }
 
 func TestClient_RemoveLink_404_returnsLinkNotFound(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()

@@ -3,6 +3,7 @@ package scrapperclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -17,7 +18,7 @@ type client struct {
 func NewLinkTracker(serverURL string) (application.LinkTracker, error) {
 	url := strings.TrimSpace(serverURL)
 	if url == "" {
-		return nil, fmt.Errorf("scrapper URL is required")
+		return nil, errors.New("scrapper URL is required")
 	}
 	api, err := NewClient(url)
 	if err != nil {
@@ -31,11 +32,11 @@ func (c *client) RegisterChat(ctx context.Context, chatID int64) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusConflict {
 		return nil
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("register chat: status %d", resp.StatusCode)
 	}
 	return nil
@@ -51,14 +52,14 @@ func (c *client) AddLink(ctx context.Context, chatID int64, link string, tags []
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusConflict {
-		return fmt.Errorf("link already exists")
+		return errors.New("link already exists")
 	}
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("chat not found")
+		return errors.New("chat not found")
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("add link: status %d", resp.StatusCode)
 	}
 	return nil
@@ -71,11 +72,11 @@ func (c *client) RemoveLink(ctx context.Context, chatID int64, link string) erro
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("link not found")
+		return errors.New("link not found")
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("remove link: status %d", resp.StatusCode)
 	}
 	return nil
@@ -87,21 +88,21 @@ func (c *client) ListLinks(ctx context.Context, chatID int64, tagFilter string) 
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("chat not found")
+		return nil, errors.New("chat not found")
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, fmt.Errorf("list links: status %d", resp.StatusCode)
 	}
 	var body struct {
 		Links *[]struct {
-			Url  *string  `json:"url"`
+			URL  *string   `json:"url"`
 			Tags *[]string `json:"tags"`
 		} `json:"links"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, err
+	if errDecode := json.NewDecoder(resp.Body).Decode(&body); errDecode != nil {
+		return nil, fmt.Errorf("decode response: %w", errDecode)
 	}
 	if body.Links == nil {
 		return nil, nil
@@ -109,8 +110,8 @@ func (c *client) ListLinks(ctx context.Context, chatID int64, tagFilter string) 
 	out := make([]application.LinkInfo, 0, len(*body.Links))
 	for _, l := range *body.Links {
 		url := ""
-		if l.Url != nil {
-			url = *l.Url
+		if l.URL != nil {
+			url = *l.URL
 		}
 		tags := []string{}
 		if l.Tags != nil {

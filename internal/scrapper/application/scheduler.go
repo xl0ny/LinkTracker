@@ -48,7 +48,7 @@ func (s *Scheduler) checkAllLinks(ctx context.Context) {
 	}
 	var totalLinks int
 	for _, chat := range chats {
-		if chat.Id == nil {
+		if chat.ID == nil {
 			continue
 		}
 		totalLinks += len(chat.Links)
@@ -56,20 +56,20 @@ func (s *Scheduler) checkAllLinks(ctx context.Context) {
 	slog.Info("check all links start", slog.Int("chats", len(chats)), slog.Int("links", totalLinks), slog.String("event", "checkAllLinks"))
 
 	for _, chat := range chats {
-		if chat.Id == nil {
+		if chat.ID == nil {
 			continue
 		}
-		chatID := *chat.Id
+		chatID := *chat.ID
 		for _, link := range chat.Links {
-			changed, latest, err := s.linkChecker.Check(ctx, link)
-			if err != nil {
-				slog.Warn("check link failed", slog.String("url", link.URL), slog.String("error", err.Error()), slog.String("event", "checkAllLinks"))
+			changed, latest, errCheck := s.linkChecker.Check(ctx, link)
+			if errCheck != nil {
+				slog.Warn("check link failed", slog.String("url", link.URL), slog.String("error", errCheck.Error()), slog.String("event", "checkAllLinks"))
 				continue
 			}
 			if changed {
 				slog.Info("link changed, notifying", slog.Int64("chat_id", chatID), slog.String("url", link.URL), slog.String("event", "checkAllLinks"))
-				if err := s.botNotifier.Notify(ctx, chatID, link); err != nil {
-					slog.Warn("notify failed", slog.Int64("chat_id", chatID), slog.String("url", link.URL), slog.String("error", err.Error()))
+				if errNotify := s.botNotifier.Notify(ctx, chatID, link); errNotify != nil {
+					slog.Warn("notify failed", slog.Int64("chat_id", chatID), slog.String("url", link.URL), slog.String("error", errNotify.Error()))
 				} else {
 					slog.Info("notify ok", slog.Int64("chat_id", chatID), slog.String("event", "checkAllLinks"))
 				}

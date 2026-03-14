@@ -8,6 +8,9 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
+const errChatNotFound = "chat not found"
+const msgUseStart = "Сначала используйте /start"
+
 type List struct {
 	tracker application.LinkTracker
 }
@@ -16,16 +19,16 @@ func NewList(tracker application.LinkTracker) *List {
 	return &List{tracker: tracker}
 }
 
-func (List) Name() string { return "list" }
+func (l *List) Name() string { return "list" }
 
-func (List) Description() string { return "Список отслеживаемых ссылок" }
+func (l *List) Description() string { return "Список отслеживаемых ссылок" }
 
 func (l *List) Handle(action domain.Action) (string, bool) {
 	tagFilter := strings.TrimSpace(action.Args)
 	links, err := l.tracker.ListLinks(context.Background(), action.ChatID, tagFilter)
 	if err != nil {
-		if err.Error() == "chat not found" {
-			return "Сначала используйте /start", true
+		if err.Error() == errChatNotFound {
+			return msgUseStart, true
 		}
 		return "Ошибка получения списка", true
 	}

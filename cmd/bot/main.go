@@ -21,5 +21,7 @@ func main() {
 	slog.Info("level set", "level", level)
 
 	ctx := context.Background()
-	app.Run(ctx, cfg)
+	if runErr := app.Run(ctx, cfg); runErr != nil {
+		os.Exit(1)
+	}
 }

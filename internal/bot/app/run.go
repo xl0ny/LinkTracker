@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -21,7 +22,7 @@ import (
 
 const workerCount = 5
 
-func Run(ctx context.Context, cfg *config.Config) {
+func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -46,15 +47,16 @@ func Run(ctx context.Context, cfg *config.Config) {
 	r := chi.NewRouter()
 	updatesHandler := bothttp.NewHandler(bot)
 	botapi.HandlerFromMux(updatesHandler, r)
-	ln, err := net.Listen("tcp", ":"+cfg.BotPort)
-	if err != nil {
-		slog.Error("http server bind failed", slog.String("error", err.Error()), slog.String("port", cfg.BotPort), slog.String("event", "http_server"))
-		os.Exit(1)
+	var lc net.ListenConfig
+	ln, errListen := lc.Listen(ctx, "tcp", ":"+cfg.BotPort)
+	if errListen != nil {
+		slog.Error("http server bind failed", slog.String("error", errListen.Error()), slog.String("port", cfg.BotPort), slog.String("event", "http_server"))
+		return fmt.Errorf("listen: %w", errListen)
 	}
 	srv := &http.Server{Handler: r}
 	go func() {
-		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			slog.Error("http server", slog.String("error", err.Error()), slog.String("event", "http_server"))
+		if errSrv := srv.Serve(ln); errSrv != nil && errSrv != http.ErrServerClosed {
+			slog.Error("http server", slog.String("error", errSrv.Error()), slog.String("event", "http_server"))
 		}
 	}()
 	slog.Info("http server started", slog.String("port", cfg.BotPort), slog.String("event", "http_started"))
@@ -62,5 +64,5 @@ func Run(ctx context.Context, cfg *config.Config) {
 	<-ctx.Done()
 	_ = srv.Shutdown(context.Background())
 	slog.Info("shutting down", slog.String("event", "shutdown"))
-	os.Exit(0)
+	return nil
 }

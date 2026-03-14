@@ -57,21 +57,21 @@ func main() {
 	h := handler.NewHandler(usecase)
 	r := chi.NewRouter()
 
-	r.Get("/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/x-yaml")
-		w.Write(scrapperapi.ContractYAML)
+		_, _ = w.Write(scrapperapi.ContractYAML)
 	})
-	r.Get("/swagger", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(swaggerHTML))
+		_, _ = w.Write([]byte(swaggerHTML))
 	})
 
 	api.HandlerFromMux(h, r)
 
 	if cfg.BotURL != "" {
-		botAPI, err := botclient.NewClientWithResponses(cfg.BotURL)
-		if err != nil {
-			slog.Warn("bot client disabled", slog.String("error", err.Error()))
+		botAPI, errBot := botclient.NewClientWithResponses(cfg.BotURL)
+		if errBot != nil {
+			slog.Warn("bot client disabled", slog.String("error", errBot.Error()))
 		} else {
 			notifier := botclient.NewNotifier(botAPI)
 			gh := github.NewClient(nil, os.Getenv("GITHUB_TOKEN"))
@@ -84,8 +84,8 @@ func main() {
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("http server", slog.String("error", err.Error()))
+		if errSrv := srv.ListenAndServe(); errSrv != nil && errSrv != http.ErrServerClosed {
+			slog.Error("http server", slog.String("error", errSrv.Error()))
 		}
 	}()
 

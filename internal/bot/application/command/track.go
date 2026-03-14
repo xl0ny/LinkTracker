@@ -17,9 +17,9 @@ func NewTrack(tracker application.LinkTracker, state *application.TrackStateStor
 	return &Track{tracker: tracker, state: state}
 }
 
-func (Track) Name() string { return "track" }
+func (t *Track) Name() string { return "track" }
 
-func (Track) Description() string { return "Начать отслеживание ссылки" }
+func (t *Track) Description() string { return "Начать отслеживание ссылки" }
 
 func (t *Track) Handle(action domain.Action) (string, bool) {
 	t.state.Set(action.ChatID, &application.TrackState{Phase: application.TrackPhaseLink})
@@ -46,8 +46,8 @@ func (t *Track) HandleContinuation(ctx context.Context, action domain.Action, st
 			if err.Error() == "link already exists" {
 				return "Ссылка уже отслеживается", true, nil
 			}
-			if err.Error() == "chat not found" {
-				return "Сначала используйте /start", true, nil
+			if err.Error() == errChatNotFound {
+				return msgUseStart, true, nil
 			}
 			return "Ошибка добавления ссылки", true, nil
 		}

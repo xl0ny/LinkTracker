@@ -10,12 +10,14 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/api"
 )
 
+const errChatNotFound = "chat not found"
+
 type UseCase interface {
 	ChatRegistration(ctx context.Context, id int64) error
 	ChatDelition(ctx context.Context, id int64) error
-	LinkAddment(ctx context.Context, chatId int64, link string, tags, filters *[]string) error
-	GetLinks(ctx context.Context, chatId int64) ([]domain.Link, error)
-	DeleteLink(ctx context.Context, chatId int64, linkURL string) (domain.Link, error)
+	LinkAddment(ctx context.Context, chatID int64, link string, tags, filters *[]string) error
+	GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error)
+	DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error)
 }
 
 type Handler struct {
@@ -28,6 +30,9 @@ func NewHandler(uc UseCase) *Handler {
 	}
 }
 
+// Method names PostTgChatId/DeleteTgChatId are required by generated OpenAPI server interface.
+//
+//nolint:revive,staticcheck // method names must match generated ServerInterface
 func (h *Handler) PostTgChatId(w http.ResponseWriter, r *http.Request, id int64) {
 	if err := h.uc.ChatRegistration(r.Context(), id); err != nil {
 		if err.Error() == "chat already exists" {
@@ -56,9 +61,10 @@ func (h *Handler) PostTgChatId(w http.ResponseWriter, r *http.Request, id int64)
 	w.WriteHeader(http.StatusOK)
 }
 
+//nolint:revive,staticcheck // method name must match generated ServerInterface
 func (h *Handler) DeleteTgChatId(w http.ResponseWriter, r *http.Request, id int64) {
 	if err := h.uc.ChatDelition(r.Context(), id); err != nil {
-		if err.Error() == "chat not found" {
+		if err.Error() == errChatNotFound {
 			helper.WriteError(
 				w,
 				http.StatusNotFound,
@@ -124,7 +130,7 @@ func (h *Handler) PostLinks(w http.ResponseWriter, r *http.Request, params api.P
 			)
 			return
 		}
-		if err.Error() == "chat not found" {
+		if err.Error() == errChatNotFound {
 			helper.WriteError(
 				w,
 				http.StatusNotFound,
@@ -163,7 +169,7 @@ func (h *Handler) PostLinks(w http.ResponseWriter, r *http.Request, params api.P
 
 func (h *Handler) GetLinks(w http.ResponseWriter, r *http.Request, params api.GetLinksParams) {
 	links, err := h.uc.GetLinks(r.Context(), params.TgChatId)
-	if err != nil && err.Error() == "chat not found" {
+	if err != nil && err.Error() == errChatNotFound {
 		helper.WriteError(
 			w,
 			http.StatusNotFound,
@@ -219,7 +225,7 @@ func (h *Handler) DeleteLinks(w http.ResponseWriter, r *http.Request, params api
 	}
 	removed, err := h.uc.DeleteLink(r.Context(), params.TgChatId, *body.Link)
 	if err != nil {
-		if err.Error() == "chat not found" || err.Error() == "link not found" {
+		if err.Error() == errChatNotFound || err.Error() == "link not found" {
 			helper.WriteError(
 				w,
 				http.StatusNotFound,

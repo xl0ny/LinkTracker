@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -23,14 +24,13 @@ type Config struct {
 func (c *Config) GetLevel() slog.Level {
 	if strings.EqualFold(c.Logging.Mode, "DEBUG") {
 		return slog.LevelDebug
-	} else {
-		return slog.LevelInfo
 	}
+	return slog.LevelInfo
 }
 
 func Load() (*Config, error) {
 	if err := godotenv.Load(); err != nil {
-		return nil, fmt.Errorf("config loading error:")
+		return nil, fmt.Errorf("config loading: %w", err)
 	}
 
 	var config Config
@@ -50,10 +50,10 @@ func Load() (*Config, error) {
 		slog.Info("APP_BOT_PORT not set, using default", slog.String("port", config.BotPort), slog.String("event", "config_default"))
 	}
 	if !isValidTelegramTokenFormat(config.TelegramToken) {
-		return nil, fmt.Errorf("APP_TELEGRAM_TOKEN invalid format (expected <number>:<string>)")
+		return nil, errors.New("invalid telegram token format (expected <number>:<string>)")
 	}
 
-	//logginпg level
+	// logging level
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
 		slog.Error("failed to load config, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
@@ -67,9 +67,11 @@ func Load() (*Config, error) {
 	return &config, nil
 }
 
+const tokenPartsCount = 2
+
 func isValidTelegramTokenFormat(token string) bool {
-	parts := strings.SplitN(token, ":", 2)
-	if len(parts) != 2 {
+	parts := strings.SplitN(token, ":", tokenPartsCount)
+	if len(parts) != tokenPartsCount {
 		return false
 	}
 	for _, r := range parts[0] {
