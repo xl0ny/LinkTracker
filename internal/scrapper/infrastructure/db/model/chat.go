@@ -1,6 +1,6 @@
 package model
 
 type Chat struct {
-	Id    *int64
+	ID    *int64 `json:"id,omitempty"`
 	Links []Link
 }

@@ -2,25 +2,27 @@ package application
 
 import (
 	"context"
-	"fmt"
+	"errors"
 )
+
+var errScrapperNotConfigured = errors.New("scrapper not configured")
 
 type noopTracker struct{}
 
-func (noopTracker) RegisterChat(ctx context.Context, chatID int64) error {
+func (noopTracker) RegisterChat(_ context.Context, _ int64) error {
 	return nil
 }
 
-func (noopTracker) AddLink(ctx context.Context, chatID int64, link string, tags []string) error {
-	return fmt.Errorf("scrapper not configured")
+func (noopTracker) AddLink(_ context.Context, _ int64, _ string, _ []string) error {
+	return errScrapperNotConfigured
 }
 
-func (noopTracker) RemoveLink(ctx context.Context, chatID int64, link string) error {
-	return fmt.Errorf("scrapper not configured")
+func (noopTracker) RemoveLink(_ context.Context, _ int64, _ string) error {
+	return errScrapperNotConfigured
 }
 
-func (noopTracker) ListLinks(ctx context.Context, chatID int64, tagFilter string) ([]LinkInfo, error) {
-	return nil, fmt.Errorf("scrapper not configured")
+func (noopTracker) ListLinks(_ context.Context, _ int64, _ string) ([]LinkInfo, error) {
+	return nil, errScrapperNotConfigured
 }
 
 func NewNoopTracker() LinkTracker {

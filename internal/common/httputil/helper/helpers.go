@@ -6,8 +6,8 @@ import (
 	"net/http"
 )
 
-// ApiErrorResponse — общая структура ошибки API (OpenAPI).
-type ApiErrorResponse struct {
+// APIErrorResponse — общая структура ошибки API (OpenAPI).
+type APIErrorResponse struct {
 	Code             *string   `json:"code,omitempty"`
 	Description      *string   `json:"description,omitempty"`
 	ExceptionMessage *string   `json:"exceptionMessage,omitempty"`
@@ -25,7 +25,7 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 
 func WriteError(w http.ResponseWriter, code int, slogname, codename, desc, excpn, err string) {
 	slog.Error(slogname, slog.String("error", err))
-	WriteJSON(w, code, ApiErrorResponse{
+	WriteJSON(w, code, APIErrorResponse{
 		Code:             &codename,
 		Description:      &desc,
 		ExceptionMessage: &err,

@@ -3,6 +3,7 @@ package stackoverflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -38,22 +39,22 @@ func (c *Client) CheckUpdated(ctx context.Context, questionURL string, prev time
 	apiURL := baseURL + "/questions/" + strconv.FormatInt(id, 10) + "?site=stackoverflow"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return false, time.Time{}, err
+		return false, time.Time{}, fmt.Errorf("new request: %w", err)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return false, time.Time{}, err
+		return false, time.Time{}, fmt.Errorf("do request: %w", err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= http.StatusMultipleChoices {
 		return false, time.Time{}, fmt.Errorf("stackoverflow api: status=%d", resp.StatusCode)
 	}
 	var body questionsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return false, time.Time{}, err
+	if errDecode := json.NewDecoder(resp.Body).Decode(&body); errDecode != nil {
+		return false, time.Time{}, fmt.Errorf("decode: %w", errDecode)
 	}
 	if len(body.Items) == 0 {
-		return false, time.Time{}, fmt.Errorf("question not found")
+		return false, time.Time{}, errors.New("question not found")
 	}
 	latest = time.Unix(body.Items[0].LastActivityDate, 0)
 	if latest.After(prev) {
@@ -68,15 +69,16 @@ func parseQuestionID(raw string) (int64, error) {
 		return 0, fmt.Errorf("invalid url: %w", err)
 	}
 	if u.Host != "stackoverflow.com" && !strings.HasSuffix(u.Host, ".stackoverflow.com") {
-		return 0, fmt.Errorf("not stackoverflow url")
+		return 0, errors.New("not stackoverflow url")
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(parts) < 2 || parts[0] != "questions" {
-		return 0, fmt.Errorf("invalid path")
+	const minPathParts = 2
+	if len(parts) < minPathParts || parts[0] != "questions" {
+		return 0, errors.New("invalid path")
 	}
 	id, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("invalid question id")
+		return 0, errors.New("invalid question id")
 	}
 	return id, nil
 }

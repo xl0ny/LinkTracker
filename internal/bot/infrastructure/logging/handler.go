@@ -26,15 +26,13 @@ func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (h *Handler) Handle(ctx context.Context, r slog.Record) error {
 	if r.Level <= slog.LevelInfo {
-		err := h.info.Handle(ctx, r)
-		if err != nil {
-			return fmt.Errorf("error on handle stage: %w", err)
+		if err := h.info.Handle(ctx, r); err != nil {
+			return fmt.Errorf("info handle: %w", err)
 		}
 		return nil
 	}
-	err := h.info.Handle(ctx, r)
-	if err != nil {
-		return fmt.Errorf("error on handle stage: %w", err)
+	if err := h.err.Handle(ctx, r); err != nil {
+		return fmt.Errorf("err handle: %w", err)
 	}
 	return nil
 }

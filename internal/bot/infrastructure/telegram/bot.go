@@ -31,7 +31,7 @@ func (bot *Bot) SendMessage(chatid int64, message string) error {
 	msg := tgbotapi.NewMessage(chatid, message)
 	_, err := bot.api.Send(msg)
 	if err != nil {
-		return fmt.Errorf("send message: %w", err)
+		return fmt.Errorf("send: %w", err)
 	}
 	return nil
 }

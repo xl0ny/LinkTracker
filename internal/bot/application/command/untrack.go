@@ -16,9 +16,11 @@ func NewUntrack(tracker application.LinkTracker) *Untrack {
 	return &Untrack{tracker: tracker}
 }
 
-func (Untrack) Name() string { return "untrack" }
+func (u *Untrack) Name() string { return "untrack" }
 
-func (Untrack) Description() string { return "Прекратить отслеживание ссылки" }
+func (u *Untrack) Description() string {
+	return "Прекратить отслеживание ссылки"
+}
 
 func (u *Untrack) Handle(action domain.Action) (string, bool) {
 	link := strings.TrimSpace(action.Args)
@@ -29,8 +31,8 @@ func (u *Untrack) Handle(action domain.Action) (string, bool) {
 		if err.Error() == "link not found" {
 			return "Ссылка не найдена в отслеживаемых", true
 		}
-		if err.Error() == "chat not found" {
-			return "Сначала используйте /start", true
+		if err.Error() == errChatNotFound {
+			return msgUseStart, true
 		}
 		return "Ошибка удаления ссылки", true
 	}

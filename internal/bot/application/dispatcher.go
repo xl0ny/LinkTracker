@@ -43,9 +43,9 @@ func (d *Dispatcher) Dispatch(action domain.Action) (text string, send bool) {
 	}
 	st := d.state.Get(action.ChatID)
 	if st != nil && d.track != nil {
-		resp, send, newSt := d.track.HandleContinuation(context.Background(), action, st)
+		resp, doSend, newSt := d.track.HandleContinuation(context.Background(), action, st)
 		d.state.Set(action.ChatID, newSt)
-		return resp, send
+		return resp, doSend
 	}
 	return "", false
 }
