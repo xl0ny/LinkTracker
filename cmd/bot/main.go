@@ -29,5 +29,4 @@ func main() {
 	}
 
 	slog.Info("shutting down", slog.String("event", "shutdown"))
-	os.Exit(0)
 }

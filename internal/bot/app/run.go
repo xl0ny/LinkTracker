@@ -28,8 +28,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	dispatcher := application.NewDispatcher(commands)
 	var wg sync.WaitGroup
 	for range workerCount {
-		wg.Add(1)
-		go application.Worker(actions, dispatcher, bot, &wg)
+		wg.Go(func() {
+			application.Worker(actions, dispatcher, bot)
+		})
 	}
 	<-ctx.Done()
 	wg.Wait()
