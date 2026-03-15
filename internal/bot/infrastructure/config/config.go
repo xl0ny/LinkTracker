@@ -29,7 +29,7 @@ func (c *LoggingConfig) GetLevel() slog.Level {
 
 func Load() (*Config, error) {
 	if err := godotenv.Load(); err != nil {
-		return nil, fmt.Errorf("config loading error:")
+		return nil, fmt.Errorf("config: %w", err)
 	}
 
 	var config Config
@@ -45,12 +45,12 @@ func Load() (*Config, error) {
 	//logginпg level
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
-		slog.Error("failed to load config, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
+		return nil, err
 	}
 
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
-		slog.Error("logging format in confilg.yaml incorrect, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
+		return nil, err
 	}
 
 	return &config, nil

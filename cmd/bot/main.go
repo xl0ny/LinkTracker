@@ -20,7 +20,7 @@ func main() {
 	}
 	level := cfg.Logging.GetLevel()
 	slog.SetDefault(slog.New(logging.NewHandler(level)))
-	slog.Info("level set", "level", level)
+	slog.Info("logging level set", "level", level)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

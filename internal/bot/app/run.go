@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sync"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
@@ -25,10 +26,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	actions := bot.ReceiveUpdates(ctx)
 	dispatcher := application.NewDispatcher(commands)
-
+	var wg sync.WaitGroup
 	for range workerCount {
-		go application.Worker(actions, dispatcher, bot)
+		wg.Add(1)
+		go application.Worker(actions, dispatcher, bot, &wg)
 	}
 	<-ctx.Done()
+	wg.Wait()
 	return nil
 }

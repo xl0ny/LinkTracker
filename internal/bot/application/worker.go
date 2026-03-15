@@ -2,6 +2,7 @@ package application
 
 import (
 	"log/slog"
+	"sync"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
@@ -10,7 +11,8 @@ type sender interface {
 	SendMessage(chatid int64, message string) error
 }
 
-func Worker(actions <-chan domain.Action, d *Dispatcher, s sender) {
+func Worker(actions <-chan domain.Action, d *Dispatcher, s sender, wg *sync.WaitGroup) {
+	defer wg.Done()
 	for action := range actions {
 		text, send := d.Dispatch(action)
 		if !send {
