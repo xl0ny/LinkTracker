@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -39,26 +40,27 @@ func Load() (*Config, error) {
 
 	config.TelegramToken = strings.TrimSpace(config.TelegramToken)
 	if !isValidTelegramTokenFormat(config.TelegramToken) {
-		return nil, fmt.Errorf("APP_TELEGRAM_TOKEN invalid format (expected <number>:<string>)")
+		return nil, errors.New("APP_TELEGRAM_TOKEN invalid format (expected <number>:<string>)")
 	}
 
-	//logginпg level
+	// logginпg level
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config: %w", err)
 	}
 
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("config: %w", err)
 	}
 
 	return &config, nil
 }
 
 func isValidTelegramTokenFormat(token string) bool {
-	parts := strings.SplitN(token, ":", 2)
-	if len(parts) != 2 {
+	const tokenParts = 2
+	parts := strings.SplitN(token, ":", tokenParts)
+	if len(parts) != tokenParts {
 		return false
 	}
 	for _, r := range parts[0] {

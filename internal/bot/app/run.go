@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
@@ -15,7 +16,7 @@ const workerCount = 5
 func Run(ctx context.Context, cfg *config.Config) error {
 	bot, err := telegram.NewBot(cfg.TelegramToken)
 	if err != nil {
-		return err
+		return fmt.Errorf("error on running bot stage: %w", err)
 	}
 
 	commands := []application.Command{

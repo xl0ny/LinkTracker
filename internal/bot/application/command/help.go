@@ -10,6 +10,6 @@ func (Help) Name() string { return "help" }
 
 func (Help) Description() string { return "Список доступных команд" }
 
-func (Help) Handle(action domain.Action) (string, bool) {
+func (Help) Handle(_ domain.Action) (string, bool) {
 	return "/start — начало работы\n/help — список команд", true
 }

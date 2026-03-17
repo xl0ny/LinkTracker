@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -11,28 +12,28 @@ import (
 
 const actionBuf = 100
 
-type bot struct {
+type Bot struct {
 	api *tgbotapi.BotAPI
 }
 
-func NewBot(telegramToken string) (*bot, error) {
+func NewBot(telegramToken string) (*Bot, error) {
 	api, err := tgbotapi.NewBotAPI(telegramToken)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new bot: %w", err)
 	}
 
-	return &bot{
+	return &Bot{
 		api: api,
 	}, nil
 }
 
-func (bot *bot) SendMessage(chatid int64, message string) error {
+func (bot *Bot) SendMessage(chatid int64, message string) error {
 	msg := tgbotapi.NewMessage(chatid, message)
 	_, err := bot.api.Send(msg)
-	return err
+	return fmt.Errorf("new bot: %w", err)
 }
 
-func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
+func (bot *Bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 	ch := make(chan domain.Action, actionBuf)
 
 	u := tgbotapi.NewUpdate(0)
@@ -60,7 +61,7 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 	return ch
 }
 
-func (bot *bot) SetMenuCommands(cmds []commands.Command) {
+func (bot *Bot) SetMenuCommands(cmds []commands.Command) {
 	botCommands := make([]tgbotapi.BotCommand, 0, len(cmds))
 	for _, c := range cmds {
 		botCommands = append(botCommands, tgbotapi.BotCommand{
