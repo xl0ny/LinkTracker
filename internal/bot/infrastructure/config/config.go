@@ -54,7 +54,7 @@ func Load() (*Config, error) {
 	}
 
 	// logging level
-	data, err := os.ReadFile("config.yaml")
+	data, err := os.ReadFile("cmd/scrapper/config.yaml")
 	if err != nil {
 		slog.Error("failed to load config, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
 	}
