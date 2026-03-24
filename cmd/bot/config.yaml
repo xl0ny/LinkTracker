@@ -1,2 +1,5 @@
+scrapper_url: "http://localhost:8080"
+bot_port: "8081"
+
 logging:
-  mode: "INFO" #variants ["INFO", "DEBUG"]
+  mode: "INFO" # variants ["INFO", "DEBUG"]

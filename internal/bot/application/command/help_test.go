@@ -22,8 +22,8 @@ func TestHelp_Description(t *testing.T) {
 func TestHelp_Handle_returnsCommandList(t *testing.T) {
 	var cmd Help
 	action := domain.Action{Command: "help"}
-	text, send := cmd.Handle(action)
-	require.True(t, send)
+	text, err := cmd.Handle(action)
+	require.NoError(t, err)
 	assert.Contains(t, text, "/start")
 	assert.Contains(t, text, "/help")
 }

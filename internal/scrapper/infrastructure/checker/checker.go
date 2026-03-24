@@ -29,17 +29,17 @@ func (c *Checker) Check(ctx context.Context, link domain.Link) (changed bool, la
 	prev := link.LastUpdated
 	switch {
 	case u.Host == "github.com":
-		changed, latest, err = c.github.CheckUpdated(ctx, link.URL, prev)
+		latest, err = c.github.CheckUpdated(ctx, link.URL)
 		if err != nil {
 			return false, time.Time{}, fmt.Errorf("github check: %w", err)
 		}
-		return changed, latest, nil
+		return latest.After(prev), latest, nil
 	case u.Host == "stackoverflow.com" || strings.HasSuffix(u.Host, ".stackoverflow.com"):
-		changed, latest, err = c.stackover.CheckUpdated(ctx, link.URL, prev)
+		latest, err = c.stackover.CheckUpdated(ctx, link.URL)
 		if err != nil {
 			return false, time.Time{}, fmt.Errorf("stackoverflow check: %w", err)
 		}
-		return changed, latest, nil
+		return latest.After(prev), latest, nil
 	default:
 		return false, time.Time{}, nil
 	}

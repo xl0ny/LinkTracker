@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	commands "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
@@ -18,17 +17,16 @@ type bot struct {
 }
 
 //revive:disable-next-line:unexported-return returning *bot is intentional (internal impl)
-func NewBot(telegramToken string) *bot {
+func NewBot(telegramToken string) (*bot, error) {
 	api, err := tgbotapi.NewBotAPI(telegramToken)
 	if err != nil {
-		slog.Error("bot initialization", slog.String("error", err.Error()), slog.String("event", "bot_init"))
-		os.Exit(1)
+		return nil, fmt.Errorf("bot: initialization error - %w", err)
 	}
-	slog.Info("bot authorized", slog.String("bot_username", api.Self.UserName), slog.String("event", "authorized"))
+	slog.Info("telegram: bot authorized", slog.String("bot_username", api.Self.UserName))
 
 	return &bot{
 		api: api,
-	}
+	}, nil
 }
 
 func (bot *bot) SendMessage(chatid int64, message string) error {
@@ -47,12 +45,11 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 	apiUpdates := bot.api.GetUpdatesChan(u)
 
 	go func(ctx context.Context) {
-		slog.Info("updates receiving started", slog.String("event", "updates_started"))
+		slog.Info("telegram: updates receiving started")
 		defer close(ch)
 		for {
 			select {
 			case <-ctx.Done():
-				close(ch)
 				return
 			case update := <-apiUpdates:
 				if update.Message == nil {
@@ -80,12 +77,12 @@ func (bot *bot) SetMenuCommands(cmds []commands.Command) {
 	}
 	resp, err := bot.api.Request(tgbotapi.NewSetMyCommands(botCommands...))
 	if err != nil {
-		slog.Warn("failed to set commands menu", slog.String("error", err.Error()), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
+		slog.Warn("telegram: set commands menu error", slog.String("error", err.Error()), slog.Int("commands_count", len(botCommands)))
 		return
 	}
 	if !resp.Ok {
-		slog.Warn("setMyCommands API response not Ok", slog.String("description", resp.Description), slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
+		slog.Warn("telegram: setMyCommands response not ok", slog.String("description", resp.Description), slog.Int("commands_count", len(botCommands)))
 		return
 	}
-	slog.Info("commands menu set", slog.Int("commands_count", len(botCommands)), slog.String("event", "set_commands"))
+	slog.Info("telegram: commands menu set", slog.Int("commands_count", len(botCommands)))
 }

@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
@@ -21,22 +22,42 @@ func (t *Track) Name() string { return "track" }
 
 func (t *Track) Description() string { return "Начать отслеживание ссылки" }
 
-func (t *Track) Handle(action domain.Action) (string, bool) {
+func (t *Track) Handle(action domain.Action) (string, error) {
 	t.state.Set(action.ChatID, &application.TrackState{Phase: application.TrackPhaseLink})
-	return "Отправьте ссылку на отслеживаемый ресурс (GitHub или StackOverflow)", true
+	return "Отправьте ссылку на отслеживаемый ресурс (GitHub или StackOverflow)", nil
 }
 
-func (t *Track) HandleContinuation(ctx context.Context, action domain.Action, state *application.TrackState) (string, bool, *application.TrackState) {
+func (t *Track) HandlePlainMessage(action domain.Action) (string, error) {
+	st := t.state.Get(action.ChatID)
+	if st == nil {
+		return "", nil
+	}
+	return t.handleInFlow(context.Background(), action, st)
+}
+
+func (t *Track) handleInFlow(ctx context.Context, action domain.Action, state *application.TrackState) (string, error) {
+	resp, doSend, newSt, err := t.step(ctx, action, state)
+	t.state.Set(action.ChatID, newSt)
+	if err != nil {
+		return "", err
+	}
+	if !doSend {
+		return "", nil
+	}
+	return resp, nil
+}
+
+func (t *Track) step(ctx context.Context, action domain.Action, state *application.TrackState) (string, bool, *application.TrackState, error) {
 	text := strings.TrimSpace(action.Text)
 	switch state.Phase {
 	case application.TrackPhaseLink:
 		if !application.IsValidLink(text) {
-			return "Некорректная ссылка. Поддерживаются только GitHub и StackOverflow.", true, nil
+			return "Некорректная ссылка. Поддерживаются только GitHub и StackOverflow.", true, nil, nil
 		}
 		return "Отправьте теги через запятую или /skip", true, &application.TrackState{
 			Phase: application.TrackPhaseTags,
 			Link:  text,
-		}
+		}, nil
 	case application.TrackPhaseTags:
 		var tags []string
 		if text != "" && text != "/skip" {
@@ -44,14 +65,14 @@ func (t *Track) HandleContinuation(ctx context.Context, action domain.Action, st
 		}
 		if err := t.tracker.AddLink(ctx, action.ChatID, state.Link, tags); err != nil {
 			if err.Error() == "link already exists" {
-				return "Ссылка уже отслеживается", true, nil
+				return "Ссылка уже отслеживается", true, nil, nil
 			}
 			if err.Error() == errChatNotFound {
-				return msgUseStart, true, nil
+				return msgUseStart, true, nil, nil
 			}
-			return "Ошибка добавления ссылки", true, nil
+			return "", false, nil, fmt.Errorf("add link: %w", err)
 		}
-		return "Ссылка добавлена в отслеживание", true, nil
+		return "Ссылка добавлена в отслеживание", true, nil, nil
 	}
-	return "", false, nil
+	return "", false, nil, nil
 }

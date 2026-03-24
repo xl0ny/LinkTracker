@@ -35,36 +35,33 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/x-yaml")
 		if _, err := w.Write(scrapperapi.ContractYAML); err != nil {
-			slog.Error("swagger yaml write error", slog.String("error", err.Error()), slog.String("event", "swagger"))
+			slog.Error("scrapper run: swagger yaml write error", slog.String("error", err.Error()))
 		}
 	})
 	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if _, err := w.Write([]byte(swagger.SwaggerHTML)); err != nil {
-			slog.Error("swagger html write error", slog.String("error", err.Error()), slog.String("event", "swagger"))
+			slog.Error("scrapper run: swagger html write error", slog.String("error", err.Error()))
 		}
 	})
 
 	api.HandlerFromMux(h, r)
 
-	if cfg.BotURL != "" {
-		botAPI, errBot := botclient.NewClientWithResponses(cfg.BotURL)
-		if errBot != nil {
-			slog.Warn("bot client disabled", slog.String("error", errBot.Error()), slog.String("event", "bot_client"))
-		} else {
-			notifier := botclient.NewNotifier(botAPI)
-			gh := github.NewClient(nil, os.Getenv("GITHUB_TOKEN"))
-			so := stackoverflow.NewClient(nil)
-			lc := checker.New(gh, so)
-			sch := application.NewScheduler(repo, lc, notifier)
-			go sch.Run(ctx)
-		}
+	botAPI, err := botclient.NewClientWithResponses(cfg.BotURL)
+	if err != nil {
+		return fmt.Errorf("bot client init: %w", err)
 	}
+	notifier := botclient.NewNotifier(botAPI)
+	gh := github.NewClient(nil, os.Getenv("GITHUB_TOKEN"))
+	so := stackoverflow.NewClient(nil)
+	lc := checker.New(gh, so)
+	sch := application.NewScheduler(repo, lc, notifier)
+	go sch.Run(ctx)
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
 	go func() {
 		if errSrv := srv.ListenAndServe(); errSrv != nil && errSrv != http.ErrServerClosed {
-			slog.Error("http server", slog.String("error", errSrv.Error()), slog.String("event", "http_server"))
+			slog.Error("scrapper run: http server error", slog.String("error", errSrv.Error()))
 		}
 	}()
 

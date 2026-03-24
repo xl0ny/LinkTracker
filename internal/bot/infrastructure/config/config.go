@@ -10,22 +10,20 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
 )
 
 type Config struct {
 	TelegramToken string `envconfig:"APP_TELEGRAM_TOKEN" required:"true"`
-	ScrapperURL   string `envconfig:"APP_SCRAPPER_URL"`
-	BotPort       string `envconfig:"APP_BOT_PORT"`
+	ScrapperURL   string `yaml:"scrapper_url"`
+	BotPort       string `yaml:"bot_port"`
 	Logging       struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 }
 
 func (c *Config) GetLevel() slog.Level {
-	if strings.EqualFold(c.Logging.Mode, "DEBUG") {
-		return slog.LevelDebug
-	}
-	return slog.LevelInfo
+	return logging.LevelFromMode(c.Logging.Mode)
 }
 
 func Load() (*Config, error) {
@@ -39,29 +37,26 @@ func Load() (*Config, error) {
 	}
 
 	config.TelegramToken = strings.TrimSpace(config.TelegramToken)
-	config.ScrapperURL = strings.TrimSpace(config.ScrapperURL)
-	if config.ScrapperURL == "" {
-		config.ScrapperURL = "http://localhost:8080"
-		slog.Info("APP_SCRAPPER_URL not set, using default", slog.String("scrapper_url", config.ScrapperURL), slog.String("event", "config_default"))
-	}
-	config.BotPort = strings.TrimSpace(config.BotPort)
-	if config.BotPort == "" {
-		config.BotPort = "8081"
-		slog.Info("APP_BOT_PORT not set, using default", slog.String("port", config.BotPort), slog.String("event", "config_default"))
-	}
 	if !isValidTelegramTokenFormat(config.TelegramToken) {
 		return nil, errors.New("invalid telegram token format (expected <number>:<string>)")
 	}
 
-	// logging level
-	data, err := os.ReadFile("cmd/scrapper/config.yaml")
+	data, err := os.ReadFile("cmd/bot/config.yaml")
 	if err != nil {
-		slog.Error("failed to load config, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
+		slog.Error("bot config: read cmd/bot/config.yaml error", slog.String("error", err.Error()))
+	} else if err = yaml.Unmarshal(data, &config); err != nil {
+		slog.Error("bot config: parse config.yaml error", slog.String("error", err.Error()))
 	}
 
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		slog.Error("logging format in confilg.yaml incorrect, setted level INFO", slog.String("error", err.Error()), slog.String("stage", "config_load"))
+	config.ScrapperURL = strings.TrimSpace(config.ScrapperURL)
+	if config.ScrapperURL == "" {
+		config.ScrapperURL = "http://localhost:8080"
+		slog.Info("bot config: scrapper_url default", slog.String("scrapper_url", config.ScrapperURL))
+	}
+	config.BotPort = strings.TrimSpace(config.BotPort)
+	if config.BotPort == "" {
+		config.BotPort = "8081"
+		slog.Info("bot config: bot_port default", slog.String("port", config.BotPort))
 	}
 
 	return &config, nil
