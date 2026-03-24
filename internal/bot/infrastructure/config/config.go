@@ -59,7 +59,7 @@ func Load() (*Config, error) {
 		return nil, errors.New("invalid telegram token format (expected <number>:<string>)")
 	}
 
-	data, err := os.ReadFile("config.yaml")
+	data, err := os.ReadFile("cmd/bot/config.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
