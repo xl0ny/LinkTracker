@@ -32,16 +32,17 @@ type repoResponse struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-func (c *Client) CheckUpdated(ctx context.Context, repoURL string, prev time.Time) (changed bool, latest time.Time, err error) {
+// CheckUpdated возвращает время последнего обновления репозитория по API; сравнение с ранее сохранённым временем — на уровне вызывающего кода.
+func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.Time, err error) {
 	owner, repo, err := parseRepoURL(repoURL)
 	if err != nil {
-		return false, time.Time{}, err
+		return time.Time{}, err
 	}
 
 	apiURL := fmt.Sprintf("%s/repos/%s/%s", c.baseURL, owner, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return false, time.Time{}, fmt.Errorf("new request: %w", err)
+		return time.Time{}, fmt.Errorf("new request: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	if c.token != "" {
@@ -50,24 +51,21 @@ func (c *Client) CheckUpdated(ctx context.Context, repoURL string, prev time.Tim
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return false, time.Time{}, fmt.Errorf("do request: %w", err)
+		return time.Time{}, fmt.Errorf("do request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
-		return false, time.Time{}, fmt.Errorf("repo not found: %s", repoURL)
+		return time.Time{}, fmt.Errorf("repo not found: %s", repoURL)
 	}
 	if resp.StatusCode >= http.StatusMultipleChoices {
-		return false, time.Time{}, fmt.Errorf("github api error: status=%d", resp.StatusCode)
+		return time.Time{}, fmt.Errorf("github api error: status=%d", resp.StatusCode)
 	}
 
 	var body repoResponse
 	if errDecode := json.NewDecoder(resp.Body).Decode(&body); errDecode != nil {
-		return false, time.Time{}, fmt.Errorf("decode: %w", errDecode)
+		return time.Time{}, fmt.Errorf("decode: %w", errDecode)
 	}
-	if body.UpdatedAt.After(prev) {
-		return true, body.UpdatedAt, nil
-	}
-	return false, body.UpdatedAt, nil
+	return body.UpdatedAt, nil
 }
 
 func parseRepoURL(raw string) (owner, repo string, err error) {

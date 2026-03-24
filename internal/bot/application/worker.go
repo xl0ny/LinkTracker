@@ -12,14 +12,17 @@ type sender interface {
 
 func Worker(actions <-chan domain.Action, d *Dispatcher, s sender) {
 	for action := range actions {
-		text, send := d.Dispatch(action)
-		if !send {
+		text, err := d.Dispatch(action)
+		if err != nil {
+			slog.Error("worker: dispatch error", slog.String("error", err.Error()), slog.String("command", action.Command), slog.Int64("chat_id", action.ChatID))
+		}
+		if text == "" {
 			continue
 		}
-		err := s.SendMessage(action.ChatID, text)
+		err = s.SendMessage(action.ChatID, text)
 		if err != nil {
-			slog.Warn("failed to send message", slog.String("error", err.Error()), slog.String("command", action.Command), slog.Int64("chat_id", action.ChatID), slog.String("event", "send_message"))
+			slog.Warn("worker: send message error", slog.String("error", err.Error()), slog.String("command", action.Command), slog.Int64("chat_id", action.ChatID))
 		}
-		slog.Info("command processed", slog.String("command", action.Command), slog.Int64("chat_id", action.ChatID), slog.String("event", "command_handled"))
+		slog.Info("worker: command processed", slog.String("command", action.Command), slog.Int64("chat_id", action.ChatID))
 	}
 }

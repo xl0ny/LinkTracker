@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 )
 
 type Handler struct {
@@ -18,6 +19,13 @@ func NewHandler(level slog.Level) *Handler {
 		info: slog.NewTextHandler(os.Stdout, opts),
 		err:  slog.NewTextHandler(os.Stderr, opts),
 	}
+}
+
+func LevelFromMode(mode string) slog.Level {
+	if strings.EqualFold(mode, "DEBUG") {
+		return slog.LevelDebug
+	}
+	return slog.LevelInfo
 }
 
 func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {

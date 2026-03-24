@@ -29,7 +29,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	bot, err := telegram.NewBot(cfg.TelegramToken)
 	if err != nil {
-		return fmt.Errorf("error on running bot stage: %w", err)
+		return fmt.Errorf("run: bot initialization: %w", err)
 	}
 
 	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL)
@@ -37,8 +37,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		slog.Warn("scrapper client disabled", slog.String("error", err.Error()), slog.String("event", "scrapper_client"))
 		tracker = application.NewNoopTracker()
 	}
+
 	stateStore := application.NewTrackStateStore()
-	commands, trackCmd := command.All(tracker, stateStore)
+	trackCmd := command.NewTrack(tracker, stateStore)
+	commands := command.Commands(tracker, trackCmd)
 	bot.SetMenuCommands(commands)
 
 	actions := bot.ReceiveUpdates(ctx)
@@ -53,23 +55,27 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	r := chi.NewRouter()
 	updatesHandler := bothttp.NewHandler(bot)
 	botapi.HandlerFromMux(updatesHandler, r)
+
 	var lc net.ListenConfig
 	ln, errListen := lc.Listen(ctx, "tcp", ":"+cfg.BotPort)
 	if errListen != nil {
-		slog.Error("http server bind failed", slog.String("error", errListen.Error()), slog.String("port", cfg.BotPort), slog.String("event", "http_server"))
+		slog.Error("run: http server bind error", slog.String("error", errListen.Error()), slog.String("port", cfg.BotPort))
 		return fmt.Errorf("listen: %w", errListen)
 	}
+
 	srv := &http.Server{Handler: r}
 	go func() {
 		if errSrv := srv.Serve(ln); errSrv != nil && errSrv != http.ErrServerClosed {
-			slog.Error("http server", slog.String("error", errSrv.Error()), slog.String("event", "http_server"))
+			slog.Error("run: http server serve error", slog.String("error", errSrv.Error()))
 		}
 	}()
-	slog.Info("http server started", slog.String("port", cfg.BotPort), slog.String("event", "http_started"))
+	slog.Info("run: http server started", slog.String("port", cfg.BotPort))
 
 	<-ctx.Done()
-	slog.Info("shutting down", slog.String("event", "shutdown"))
-	_ = srv.Shutdown(context.Background())
+	if errShutdown := srv.Shutdown(context.Background()); errShutdown != nil {
+		slog.Error("run: server graceful shutdown error", slog.String("error", errShutdown.Error()))
+	}
+	slog.Info("run: shutting down")
 	wg.Wait()
 	return nil
 }

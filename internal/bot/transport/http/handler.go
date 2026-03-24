@@ -21,10 +21,10 @@ func NewHandler(sender MessageSender) *Handler {
 }
 
 func (h *Handler) PostUpdates(w http.ResponseWriter, r *http.Request) {
-	slog.Info("POST /updates received", slog.String("event", "post_updates"))
+	slog.Info("http: POST /updates received")
 	var body api.LinkUpdate
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		slog.Warn("invalid updates body", slog.String("error", err.Error()), slog.String("event", "post_updates"))
+		slog.Warn("http: invalid updates body", slog.String("error", err.Error()))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -42,10 +42,10 @@ func (h *Handler) PostUpdates(w http.ResponseWriter, r *http.Request) {
 	var sendErr bool
 	for _, chatID := range *body.TgChatIds {
 		if err := h.sender.SendMessage(chatID, msg); err != nil {
-			slog.Warn("send update failed", slog.Int64("chat_id", chatID), slog.String("error", err.Error()), slog.String("event", "post_updates"))
+			slog.Warn("http: send update error", slog.Int64("chat_id", chatID), slog.String("error", err.Error()))
 			sendErr = true
 		} else {
-			slog.Info("update sent", slog.Int64("chat_id", chatID), slog.String("event", "post_updates"))
+			slog.Info("http: update sent", slog.Int64("chat_id", chatID))
 		}
 	}
 	if sendErr {

@@ -22,7 +22,7 @@ func TestStart_Description(t *testing.T) {
 func TestStart_Handle_returnsWelcomeMessage(t *testing.T) {
 	cmd := NewStart(nil)
 	action := domain.Action{Command: "start"}
-	text, send := cmd.Handle(action)
-	require.True(t, send)
+	text, err := cmd.Handle(action)
+	require.NoError(t, err)
 	assert.Equal(t, "Добро пожаловать! Используйте /help для списка команд.", text)
 }

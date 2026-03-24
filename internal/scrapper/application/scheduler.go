@@ -43,7 +43,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 func (s *Scheduler) checkAllLinks(ctx context.Context) {
 	chats, err := s.repo.GetChats(ctx)
 	if err != nil {
-		slog.Error("get chats failed", slog.String("error", err.Error()), slog.String("event", "checkAllLinks"))
+		slog.Error("scheduler: get chats error", slog.String("error", err.Error()))
 		return
 	}
 	var totalLinks int
@@ -53,7 +53,7 @@ func (s *Scheduler) checkAllLinks(ctx context.Context) {
 		}
 		totalLinks += len(chat.Links)
 	}
-	slog.Info("check all links start", slog.Int("chats", len(chats)), slog.Int("links", totalLinks), slog.String("event", "checkAllLinks"))
+	slog.Info("scheduler: check all links start", slog.Int("chats", len(chats)), slog.Int("links", totalLinks))
 
 	for _, chat := range chats {
 		if chat.ID == nil {
@@ -63,17 +63,20 @@ func (s *Scheduler) checkAllLinks(ctx context.Context) {
 		for _, link := range chat.Links {
 			changed, latest, errCheck := s.linkChecker.Check(ctx, link)
 			if errCheck != nil {
-				slog.Warn("check link failed", slog.String("url", link.URL), slog.String("error", errCheck.Error()), slog.String("event", "checkAllLinks"))
+				slog.Warn("scheduler: check link error", slog.String("url", link.URL), slog.String("error", errCheck.Error()))
 				continue
 			}
 			if changed {
-				slog.Info("link changed, notifying", slog.Int64("chat_id", chatID), slog.String("url", link.URL), slog.String("event", "checkAllLinks"))
+				slog.Info("scheduler: link changed, notifying", slog.Int64("chat_id", chatID), slog.String("url", link.URL))
 				if errNotify := s.botNotifier.Notify(ctx, chatID, link); errNotify != nil {
-					slog.Warn("notify failed", slog.Int64("chat_id", chatID), slog.String("url", link.URL), slog.String("error", errNotify.Error()))
+					slog.Warn("scheduler: notify error", slog.Int64("chat_id", chatID), slog.String("url", link.URL), slog.String("error", errNotify.Error()))
 				} else {
-					slog.Info("notify ok", slog.Int64("chat_id", chatID), slog.String("event", "checkAllLinks"))
+					slog.Info("scheduler: notify ok", slog.Int64("chat_id", chatID))
 				}
-				_ = s.repo.UpdateLinkUpdatedAt(ctx, chatID, link.URL, latest)
+				err = s.repo.UpdateLinkUpdatedAt(ctx, chatID, link.URL, latest)
+				if err != nil {
+					slog.Warn("scheduler: db new link date updation failed", slog.String("error", err.Error()))
+				}
 			}
 		}
 	}
