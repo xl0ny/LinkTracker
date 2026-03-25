@@ -15,7 +15,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/checker"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/inmemory"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/github"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/stackoverflow"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/swagger"
@@ -27,7 +27,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	repo := db.NewRepository()
+	repo := inmemory.NewRepository()
 	usecase := application.NewChatUC(repo)
 	h := handler.NewHandler(usecase)
 	r := chi.NewRouter()
@@ -64,6 +64,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 			slog.Error("scrapper run: http server error", slog.String("error", errSrv.Error()))
 		}
 	}()
+	swaggerUI := fmt.Sprintf("http://127.0.0.1:%s/swagger", cfg.Port)
+	slog.Info("scrapper run: http server started",
+		slog.String("port", cfg.Port),
+		slog.String("swagger_ui", swaggerUI))
 
 	<-ctx.Done()
 	if err := srv.Shutdown(context.Background()); err != nil {

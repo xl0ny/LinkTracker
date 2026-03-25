@@ -11,10 +11,12 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	botopenapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/scrapperclient"
+	botswagger "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/swagger"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/telegram"
 	bothttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
@@ -50,6 +52,18 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	r := chi.NewRouter()
+	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/x-yaml")
+		if _, err := w.Write(botopenapi.ContractYAML); err != nil {
+			slog.Error("swagger yaml write error", slog.String("error", err.Error()), slog.String("event", "swagger"))
+		}
+	})
+	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if _, err := w.Write([]byte(botswagger.SwaggerHTML)); err != nil {
+			slog.Error("swagger html write error", slog.String("error", err.Error()), slog.String("event", "swagger"))
+		}
+	})
 	updatesHandler := bothttp.NewHandler(bot)
 	botapi.HandlerFromMux(updatesHandler, r)
 
@@ -66,7 +80,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 			slog.Error("run: http server serve error", slog.String("error", errSrv.Error()))
 		}
 	}()
-	slog.Info("run: http server started", slog.String("port", cfg.BotPort))
+	swaggerUI := fmt.Sprintf("http://127.0.0.1:%s/swagger", cfg.BotPort)
+	slog.Info("run: http server started",
+		slog.String("port", cfg.BotPort),
+		slog.String("swagger_ui", swaggerUI))
 
 	<-ctx.Done()
 
