@@ -15,5 +15,20 @@ services:
       timeout: 5s
       retries: 5
 
+  migrator:
+    image: migrate/migrate:v4.19.1
+    profiles: [migrate]
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - "-path"
+      - "/migrations"
+      - "-database"
+      - "postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-linktracker}?sslmode=disable"
+      - "up"
+
 volumes:
   pgdata:

@@ -62,15 +62,26 @@ func (r *repository) AddLink(_ context.Context, chatID int64, link string, tags,
 	return nil
 }
 
-func (r *repository) GetLinks(_ context.Context, chatID int64) ([]domain.Link, error) {
+func (r *repository) GetLinks(_ context.Context, chatID int64, limit, offset int) ([]domain.Link, error) {
 	chat, ok := r.Chats[chatID]
 	if !ok {
 		return nil, errors.New("chat not found")
 	}
-	return toDomainLinks(chat.Links), nil
+	all := toDomainLinks(chat.Links)
+	if limit <= 0 {
+		return all, nil
+	}
+	if offset >= len(all) {
+		return nil, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], nil
 }
 
-func (r *repository) GetChats(_ context.Context) (map[int64]domain.Chat, error) {
+func (r *repository) GetChats(_ context.Context, limit, offset int) (map[int64]domain.Chat, error) {
 	chats := make(map[int64]domain.Chat)
 	for id, chat := range r.Chats {
 		chats[id] = domain.Chat{
@@ -79,6 +90,27 @@ func (r *repository) GetChats(_ context.Context) (map[int64]domain.Chat, error) 
 		}
 	}
 	return chats, nil
+}
+
+func (r *repository) Close() {}
+
+func (r *repository) CreateTag(_ context.Context, value string) (int64, error) {
+	if value == "" {
+		return 0, errors.New("empty tag")
+	}
+	return 1, nil
+}
+
+func (r *repository) ListTags(_ context.Context, _, _ int) ([]domain.Tag, error) {
+	return nil, nil
+}
+
+func (r *repository) UpdateTag(_ context.Context, _ int64, _ string) error {
+	return errors.New("inmemory: tags not supported")
+}
+
+func (r *repository) DeleteTag(_ context.Context, _ int64) error {
+	return errors.New("inmemory: tags not supported")
 }
 
 func (r *repository) DeleteLink(_ context.Context, chatID int64, linkURL string) (domain.Link, error) {

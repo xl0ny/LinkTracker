@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
@@ -15,7 +16,8 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/checker"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/inmemory"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/orm"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/sql"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/github"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/stackoverflow"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/swagger"
@@ -27,7 +29,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	repo := inmemory.NewRepository()
+	repo, err := newChatRepository(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer repo.Close()
+
 	usecase := application.NewChatUC(repo)
 	h := handler.NewHandler(usecase)
 	r := chi.NewRouter()
@@ -74,4 +81,20 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("shutdown: %w", shutdownErr)
 	}
 	return nil
+}
+
+func newChatRepository(ctx context.Context, cfg *config.Config) (application.ChatRepository, error) {
+	mode := strings.ToUpper(strings.TrimSpace(cfg.AccessType))
+	if mode == "" {
+		mode = "SQL"
+	}
+	dsn := cfg.PostgresDSN()
+	switch mode {
+	case "SQL":
+		return sql.NewRepository(ctx, dsn)
+	case "ORM":
+		return orm.NewRepository(ctx, dsn)
+	default:
+		return nil, fmt.Errorf("scrapper: unknown access_type %q (use SQL or ORM)", cfg.AccessType)
+	}
 }

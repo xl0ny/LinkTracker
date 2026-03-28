@@ -1,2 +1,4 @@
+access_type: "SQL" # SQL | ORM
+
 logging:
   mode: "INFO" #variants ["INFO", "DEBUG"]
