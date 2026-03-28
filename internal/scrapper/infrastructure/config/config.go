@@ -10,12 +10,20 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+	commondb "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
 )
 
 type Config struct {
-	BotURL string `envconfig:"APP_BOT_URL"`
-	Port   string `envconfig:"APP_SCRAPPER_PORT"`
+	BotURL     string `envconfig:"APP_BOT_URL"`
+	Port       string `envconfig:"APP_SCRAPPER_PORT"`
+	AccessType string `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
+	PostgresUser     string `yaml:"postgres_user" envconfig:"POSTGRES_USER"`
+	PostgresPassword string `yaml:"postgres_password" envconfig:"POSTGRES_PASSWORD"`
+	PostgresDB       string `yaml:"postgres_db" envconfig:"POSTGRES_DB"`
+	PostgresHost     string `yaml:"postgres_host" envconfig:"POSTGRES_HOST"`
+	PostgresPort     string `yaml:"postgres_port" envconfig:"POSTGRES_PORT"`
+	PostgresSSLMode  string `yaml:"postgres_ssl_mode" envconfig:"POSTGRES_SSL_MODE"`
 	Logging struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
@@ -25,8 +33,21 @@ func (c *Config) GetLevel() slog.Level {
 	return logging.LevelFromMode(c.Logging.Mode)
 }
 
+func (c *Config) PostgresDSN() string {
+	return commondb.BuildPostgresDSN(
+		c.PostgresUser,
+		c.PostgresPassword,
+		c.PostgresHost,
+		c.PostgresPort,
+		c.PostgresDB,
+		c.PostgresSSLMode,
+	)
+}
+
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		slog.Info("scrapper config: .env not loaded (optional)", slog.String("error", err.Error()))
+	}
 	var c Config
 	if err := envconfig.Process("", &c); err != nil {
 		return nil, fmt.Errorf("config: %w", err)

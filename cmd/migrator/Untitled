@@ -1,0 +1,16 @@
+func RunMigration(m *migrate.Migrate, dir string, steps int) error {
+	switch dir {
+	case "up":
+		if steps > 0 {
+			return m.Steps(steps)
+		}
+		return m.Up()
+	case "down":
+		if steps > 0 {
+			return m.Steps(-steps)
+		}
+		return m.Down()
+	default:
+		return fmt.Errorf("unknown direction: %s", dir)
+	}
+}

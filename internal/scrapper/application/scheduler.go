@@ -9,11 +9,6 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
 
-type linksRepo interface {
-	GetChats(ctx context.Context) (map[int64]domain.Chat, error)
-	UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error
-}
-
 type linkChecker interface {
 	Check(ctx context.Context, link domain.Link) (changed bool, latest time.Time, err error)
 }
@@ -23,25 +18,29 @@ type botNotifier interface {
 }
 
 type Scheduler struct {
-	repo        linksRepo
+	repo        ChatRepository
 	linkChecker linkChecker
 	botNotifier botNotifier
 }
 
-func NewScheduler(repo linksRepo, lc linkChecker, bn botNotifier) *Scheduler {
+func NewScheduler(repo ChatRepository, lc linkChecker, bn botNotifier) *Scheduler {
 	return &Scheduler{repo: repo, linkChecker: lc, botNotifier: bn}
 }
 
 func (s *Scheduler) Run(ctx context.Context) {
 	sch := gocron.NewScheduler(time.UTC)
-	_, _ = sch.Every(1).Minutes().Do(func() { s.checkAllLinks(ctx) })
+	_, err := sch.Every(1).Minutes().Do(func() { s.checkAllLinks(ctx) })
+	if err != nil {
+		slog.Error("scheduler: register periodic job", slog.String("error", err.Error()))
+		return
+	}
 	sch.StartAsync()
 	<-ctx.Done()
 	sch.Stop()
 }
 
 func (s *Scheduler) checkAllLinks(ctx context.Context) {
-	chats, err := s.repo.GetChats(ctx)
+	chats, err := s.repo.GetChats(ctx, 0, 0)
 	if err != nil {
 		slog.Error("scheduler: get chats error", slog.String("error", err.Error()))
 		return

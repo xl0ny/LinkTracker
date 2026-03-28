@@ -46,7 +46,11 @@ func (c *Client) CheckUpdated(ctx context.Context, questionURL string) (latest t
 	if err != nil {
 		return time.Time{}, fmt.Errorf("do request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close response body: %w", cerr)
+		}
+	}()
 	if resp.StatusCode >= http.StatusMultipleChoices {
 		return time.Time{}, fmt.Errorf("stackoverflow api: status=%d", resp.StatusCode)
 	}

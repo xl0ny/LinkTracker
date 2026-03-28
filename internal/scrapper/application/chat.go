@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
@@ -11,9 +12,15 @@ type ChatRepository interface {
 	AddChat(ctx context.Context, id int64) error
 	DeleteChat(ctx context.Context, id int64) error
 	AddLink(ctx context.Context, chatID int64, link string, tags, filters *[]string) error
-	GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error)
-	GetChats(ctx context.Context) (map[int64]domain.Chat, error)
+	GetLinks(ctx context.Context, chatID int64, limit, offset int) ([]domain.Link, error)
+	GetChats(ctx context.Context, limit, offset int) (map[int64]domain.Chat, error)
 	DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error)
+	UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error
+	CreateTag(ctx context.Context, value string) (int64, error)
+	ListTags(ctx context.Context, limit, offset int) ([]domain.Tag, error)
+	UpdateTag(ctx context.Context, id int64, value string) error
+	DeleteTag(ctx context.Context, id int64) error
+	Close()
 }
 
 type chatUC struct {
@@ -49,7 +56,7 @@ func (uc *chatUC) LinkAddment(ctx context.Context, chatID int64, link string, ta
 }
 
 func (uc *chatUC) GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error) {
-	links, err := uc.repo.GetLinks(ctx, chatID)
+	links, err := uc.repo.GetLinks(ctx, chatID, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("get links: %w", err)
 	}
