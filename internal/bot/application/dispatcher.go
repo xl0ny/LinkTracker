@@ -19,10 +19,10 @@ type PlainMessageHandler interface {
 type Dispatcher struct {
 	handlers map[string]Command
 	plain    PlainMessageHandler
-	state    *TrackStateStore
+	state    TrackStateStore
 }
 
-func NewDispatcher(cmds []Command, plain PlainMessageHandler, state *TrackStateStore) *Dispatcher {
+func NewDispatcher(cmds []Command, plain PlainMessageHandler, state TrackStateStore) *Dispatcher {
 	h := make(map[string]Command, len(cmds))
 	for _, c := range cmds {
 		h[c.Name()] = c

@@ -11,10 +11,10 @@ import (
 
 type Track struct {
 	tracker application.LinkTracker
-	state   *application.TrackStateStore
+	state   application.TrackStateStore
 }
 
-func NewTrack(tracker application.LinkTracker, state *application.TrackStateStore) *Track {
+func NewTrack(tracker application.LinkTracker, state application.TrackStateStore) *Track {
 	return &Track{tracker: tracker, state: state}
 }
 

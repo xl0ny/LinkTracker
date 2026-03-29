@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
@@ -14,6 +15,7 @@ type ChatRepository interface {
 	GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error)
 	GetChats(ctx context.Context) (map[int64]domain.Chat, error)
 	DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error)
+	UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error
 }
 
 type chatUC struct {
