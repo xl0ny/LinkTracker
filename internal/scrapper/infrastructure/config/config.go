@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 type Config struct {
 	BotURL string `envconfig:"APP_BOT_URL"`
 	Port   string `envconfig:"APP_SCRAPPER_PORT"`
+
 	Logging struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
@@ -62,10 +64,10 @@ func validateBotURL(raw string) error {
 		return fmt.Errorf("invalid URL: %w", err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("scheme must be http or https")
+		return errors.New("scheme must be http or https")
 	}
 	if u.Host == "" {
-		return fmt.Errorf("host is required")
+		return errors.New("host is required")
 	}
 	return nil
 }

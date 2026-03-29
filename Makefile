@@ -55,8 +55,13 @@ run-scrapper:
 
 .PHONY: generate-api
 generate-api:
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,chi-server -package api -o internal/bot/transport/http/api/openapi_gen.go internal/bot/api/contract.yaml
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,client     -package botclient -o internal/scrapper/infrastructure/botclient/openapi_client_gen.go internal/bot/api/contract.yaml
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,chi-server -package api -o internal/scrapper/transport/http/api/openapi_gen.go internal/scrapper/api/contract.yaml
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,client     -package scrapperclient -o internal/bot/infrastructure/scrapperclient/openapi_client_gen.go internal/scrapper/api/contract.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,chi-server -package api -o internal/bot/transport/http/api/openapi_gen.go api/bot.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,client     -package botclient -o internal/scrapper/infrastructure/botclient/openapi_client_gen.go api/bot.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,chi-server -package api -o internal/scrapper/transport/http/api/openapi_gen.go api/scrapper.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest -generate types,client     -package scrapperclient -o internal/bot/infrastructure/scrapperclient/openapi_client_gen.go api/scrapper.yaml
 	@echo "API generated"
+
+.PHONY: generate-mocks
+generate-mocks:
+	@go run go.uber.org/mock/mockgen@latest -destination=internal/bot/application/mocks/command_mock.go -package=mocks gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application Command
+	@echo "mocks generated"

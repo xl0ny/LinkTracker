@@ -1,6 +1,8 @@
 package application
 
 import (
+	"fmt"
+
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
@@ -28,23 +30,35 @@ func NewDispatcher(cmds []Command, plain PlainMessageHandler, state *TrackStateS
 	return &Dispatcher{handlers: h, plain: plain, state: state}
 }
 
-func (d *Dispatcher) Dispatch(action domain.Action) (text string, err error) {
+func (d *Dispatcher) Dispatch(action domain.Action) (string, error) {
 	if action.Command != "" {
-		if action.Command == "cancel" {
-			d.state.Clear(action.ChatID)
-			return "Отменено.", nil
-		}
-		if cmd, ok := d.handlers[action.Command]; ok {
-			if action.Command != "track" {
-				d.state.Clear(action.ChatID)
-			}
-			return cmd.Handle(action)
-		}
-		d.state.Clear(action.ChatID)
-		return "Неизвестная команда. Используйте /help для списка команд", nil
+		return d.dispatchNamedCommand(action)
 	}
 	if d.plain != nil {
-		return d.plain.HandlePlainMessage(action)
+		msg, handleErr := d.plain.HandlePlainMessage(action)
+		if handleErr != nil {
+			return "", fmt.Errorf("plain message: %w", handleErr)
+		}
+		return msg, nil
 	}
 	return "", nil
+}
+
+func (d *Dispatcher) dispatchNamedCommand(action domain.Action) (string, error) {
+	if action.Command == "cancel" {
+		d.state.Clear(action.ChatID)
+		return "Отменено.", nil
+	}
+	if cmd, ok := d.handlers[action.Command]; ok {
+		if action.Command != "track" {
+			d.state.Clear(action.ChatID)
+		}
+		msg, handleErr := cmd.Handle(action)
+		if handleErr != nil {
+			return "", fmt.Errorf("command %q: %w", action.Command, handleErr)
+		}
+		return msg, nil
+	}
+	d.state.Clear(action.ChatID)
+	return "Неизвестная команда. Используйте /help для списка команд", nil
 }
