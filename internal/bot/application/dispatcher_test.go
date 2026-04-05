@@ -7,13 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/mocks"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
 func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	mockCmd := mocks.NewMockCommand(ctrl)
+	mockCmd := NewMockCommand(ctrl)
 	mockCmd.EXPECT().
 		Name().
 		Return("start")
@@ -31,7 +30,7 @@ func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
 
 func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	mockCmd := mocks.NewMockCommand(ctrl)
+	mockCmd := NewMockCommand(ctrl)
 	mockCmd.EXPECT().
 		Name().
 		Return("help")
