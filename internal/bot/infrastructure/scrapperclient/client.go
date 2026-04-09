@@ -11,11 +11,11 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 )
 
-type client struct {
+type LinkTracker struct {
 	api *Client
 }
 
-func NewLinkTracker(serverURL string) (application.LinkTracker, error) {
+func NewLinkTracker(serverURL string) (*LinkTracker, error) {
 	url := strings.TrimSpace(serverURL)
 	if url == "" {
 		return nil, errors.New("scrapper URL is required")
@@ -24,10 +24,10 @@ func NewLinkTracker(serverURL string) (application.LinkTracker, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &client{api: api}, nil
+	return &LinkTracker{api: api}, nil
 }
 
-func (c *client) RegisterChat(ctx context.Context, chatID int64) error {
+func (c *LinkTracker) RegisterChat(ctx context.Context, chatID int64) error {
 	resp, err := c.api.PostTgChatId(ctx, chatID)
 	if err != nil {
 		return err
@@ -42,7 +42,7 @@ func (c *client) RegisterChat(ctx context.Context, chatID int64) error {
 	return nil
 }
 
-func (c *client) AddLink(ctx context.Context, chatID int64, link string, tags []string) error {
+func (c *LinkTracker) AddLink(ctx context.Context, chatID int64, link string, tags []string) error {
 	req := PostLinksJSONRequestBody{
 		Link: &link,
 		Tags: &tags,
@@ -65,7 +65,7 @@ func (c *client) AddLink(ctx context.Context, chatID int64, link string, tags []
 	return nil
 }
 
-func (c *client) RemoveLink(ctx context.Context, chatID int64, link string) error {
+func (c *LinkTracker) RemoveLink(ctx context.Context, chatID int64, link string) error {
 	req := RemoveLinkRequest{Link: &link}
 	params := &DeleteLinksParams{TgChatId: chatID}
 	resp, err := c.api.DeleteLinks(ctx, params, req)
@@ -82,7 +82,7 @@ func (c *client) RemoveLink(ctx context.Context, chatID int64, link string) erro
 	return nil
 }
 
-func (c *client) ListLinks(ctx context.Context, chatID int64, tagFilter string) ([]application.LinkInfo, error) {
+func (c *LinkTracker) ListLinks(ctx context.Context, chatID int64, tagFilter string) ([]application.LinkInfo, error) {
 	params := &GetLinksParams{TgChatId: chatID}
 	resp, err := c.api.GetLinks(ctx, params)
 	if err != nil {

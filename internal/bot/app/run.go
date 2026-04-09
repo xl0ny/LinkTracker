@@ -40,7 +40,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	stateStore := application.NewTrackStateStore()
 	trackCmd := command.NewTrack(tracker, stateStore)
-	commands := command.Commands(tracker, trackCmd)
+	commands := command.Commands(tracker, trackCmd, tracker, tracker)
 	bot.SetMenuCommands(commands)
 
 	actions := bot.ReceiveUpdates(ctx)

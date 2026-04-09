@@ -4,15 +4,18 @@ import (
 	"context"
 	"fmt"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
-type Start struct {
-	tracker application.LinkTracker
+type chatRegistrar interface {
+	RegisterChat(ctx context.Context, chatID int64) error
 }
 
-func NewStart(tracker application.LinkTracker) *Start {
+type Start struct {
+	tracker chatRegistrar
+}
+
+func NewStart(tracker chatRegistrar) *Start {
 	return &Start{tracker: tracker}
 }
 
