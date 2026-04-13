@@ -89,37 +89,11 @@ type soCandidate struct {
 func (c *Client) CheckQuestion(ctx context.Context, questionURL string, since time.Time) (domain.LinkCheckOutcome, error) {
 	id, err := parseQuestionID(questionURL)
 	if err != nil {
-		return domain.LinkCheckOutcome{}, err
+		return domain.LinkCheckOutcome{}, fmt.Errorf("parse question url: %w", err)
 	}
 	idStr := strconv.FormatInt(id, 10)
 
-	qURL := fmt.Sprintf("%s/questions/%s?site=stackoverflow&filter=%s", c.apiBase, idStr, withBody)
-	var qwrap seWrapper[questionItem]
-	if err := c.getJSON(ctx, qURL, &qwrap); err != nil {
-		return domain.LinkCheckOutcome{}, fmt.Errorf("question: %w", err)
-	}
-	if len(qwrap.Items) == 0 {
-		return domain.LinkCheckOutcome{}, errors.New("question not found")
-	}
-	q := qwrap.Items[0]
-
-	aURL := fmt.Sprintf("%s/questions/%s/answers?site=stackoverflow&order=desc&sort=creation&pagesize=100&filter=%s", c.apiBase, idStr, withBody)
-	var awrap seWrapper[answerItem]
-	if err := c.getJSON(ctx, aURL, &awrap); err != nil {
-		return domain.LinkCheckOutcome{}, fmt.Errorf("answers: %w", err)
-	}
-
-	cURL := fmt.Sprintf("%s/questions/%s/comments?site=stackoverflow&order=desc&sort=creation&pagesize=100&filter=%s", c.apiBase, idStr, withBody)
-	var qComments seWrapper[commentItem]
-	if err := c.getJSON(ctx, cURL, &qComments); err != nil {
-		return domain.LinkCheckOutcome{}, fmt.Errorf("comments: %w", err)
-	}
-
-	answerIDs := make([]int64, 0, len(awrap.Items))
-	for _, a := range awrap.Items {
-		answerIDs = append(answerIDs, a.AnswerID)
-	}
-	aComments, err := c.fetchAnswerComments(ctx, answerIDs)
+	q, awrap, qComments, aComments, err := c.loadStackOverflowQuestionBundle(ctx, idStr)
 	if err != nil {
 		return domain.LinkCheckOutcome{}, err
 	}
@@ -204,6 +178,49 @@ func (c *Client) CheckQuestion(ctx context.Context, questionURL string, since ti
 	}, nil
 }
 
+// CheckUpdated оставлен для обратной совместимости; для ДЗ используйте CheckQuestion.
+func (c *Client) CheckUpdated(ctx context.Context, questionURL string) (latest time.Time, err error) {
+	out, err := c.CheckQuestion(ctx, questionURL, time.Time{})
+	if err != nil {
+		return time.Time{}, fmt.Errorf("stackoverflow CheckUpdated: %w", err)
+	}
+	return out.Latest, nil
+}
+
+func (c *Client) loadStackOverflowQuestionBundle(ctx context.Context, idStr string) (questionItem, seWrapper[answerItem], seWrapper[commentItem], []commentItem, error) {
+	qURL := fmt.Sprintf("%s/questions/%s?site=stackoverflow&filter=%s", c.apiBase, idStr, withBody)
+	var qwrap seWrapper[questionItem]
+	if qErr := c.getJSON(ctx, qURL, &qwrap); qErr != nil {
+		return questionItem{}, seWrapper[answerItem]{}, seWrapper[commentItem]{}, nil, fmt.Errorf("question: %w", qErr)
+	}
+	if len(qwrap.Items) == 0 {
+		return questionItem{}, seWrapper[answerItem]{}, seWrapper[commentItem]{}, nil, errors.New("question not found")
+	}
+	q := qwrap.Items[0]
+
+	aURL := fmt.Sprintf("%s/questions/%s/answers?site=stackoverflow&order=desc&sort=creation&pagesize=100&filter=%s", c.apiBase, idStr, withBody)
+	var awrap seWrapper[answerItem]
+	if aErr := c.getJSON(ctx, aURL, &awrap); aErr != nil {
+		return q, seWrapper[answerItem]{}, seWrapper[commentItem]{}, nil, fmt.Errorf("answers: %w", aErr)
+	}
+
+	cURL := fmt.Sprintf("%s/questions/%s/comments?site=stackoverflow&order=desc&sort=creation&pagesize=100&filter=%s", c.apiBase, idStr, withBody)
+	var qComments seWrapper[commentItem]
+	if cErr := c.getJSON(ctx, cURL, &qComments); cErr != nil {
+		return q, awrap, seWrapper[commentItem]{}, nil, fmt.Errorf("comments: %w", cErr)
+	}
+
+	answerIDs := make([]int64, 0, len(awrap.Items))
+	for _, a := range awrap.Items {
+		answerIDs = append(answerIDs, a.AnswerID)
+	}
+	aComments, acErr := c.fetchAnswerComments(ctx, answerIDs)
+	if acErr != nil {
+		return q, awrap, qComments, nil, fmt.Errorf("answer comments: %w", acErr)
+	}
+	return q, awrap, qComments, aComments, nil
+}
+
 func (c *Client) fetchAnswerComments(ctx context.Context, answerIDs []int64) ([]commentItem, error) {
 	if len(answerIDs) == 0 {
 		return nil, nil
@@ -254,13 +271,13 @@ func formatSOUpdate(kind, questionTitle, author string, at time.Time, body, link
 }
 
 func (c *Client) getJSON(ctx context.Context, apiURL string, dst any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
-	if err != nil {
-		return fmt.Errorf("new request: %w", err)
+	req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if reqErr != nil {
+		return fmt.Errorf("new request: %w", reqErr)
 	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return fmt.Errorf("do request: %w", err)
+	resp, doErr := c.http.Do(req)
+	if doErr != nil {
+		return fmt.Errorf("do request: %w", doErr)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -268,8 +285,8 @@ func (c *Client) getJSON(ctx context.Context, apiURL string, dst any) error {
 	if resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("stackoverflow api: status=%d", resp.StatusCode)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
-		return fmt.Errorf("decode: %w", err)
+	if decErr := json.NewDecoder(resp.Body).Decode(dst); decErr != nil {
+		return fmt.Errorf("decode: %w", decErr)
 	}
 	return nil
 }
@@ -292,13 +309,4 @@ func parseQuestionID(raw string) (int64, error) {
 		return 0, errors.New("invalid question id")
 	}
 	return id, nil
-}
-
-// CheckUpdated оставлен для обратной совместимости; для ДЗ используйте CheckQuestion.
-func (c *Client) CheckUpdated(ctx context.Context, questionURL string) (latest time.Time, err error) {
-	out, err := c.CheckQuestion(ctx, questionURL, time.Time{})
-	if err != nil {
-		return time.Time{}, err
-	}
-	return out.Latest, nil
 }

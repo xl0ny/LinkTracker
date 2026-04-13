@@ -13,7 +13,7 @@ func StripHTML(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// обрезает текст до maxRunes символов
+// Preview truncates text to at most maxRunes runes.
 func Preview(s string, maxRunes int) string {
 	s = strings.TrimSpace(s)
 	if maxRunes <= 0 {

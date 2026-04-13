@@ -12,31 +12,23 @@ import (
 )
 
 func GetConfig() (*Config, error) {
-
-	// yaml
 	data, err := os.ReadFile("cmd/migrator/config.yaml")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("migrator: read config: %w", err)
 	}
 	var config Config
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		return nil, err
+	if yamlErr := yaml.Unmarshal(data, &config); yamlErr != nil {
+		return nil, fmt.Errorf("migrator: parse yaml: %w", yamlErr)
 	}
 
-	// env
-	err = godotenv.Load()
-	if err != nil {
-		log.Println("migrator: env variables loading failed:", err)
-		os.Exit(1)
+	if dotenvErr := godotenv.Load(); dotenvErr != nil {
+		log.Println("migrator: env variables loading failed:", dotenvErr)
 	}
 
-	err = envconfig.Process("", &config)
-	if err != nil {
-		log.Println("migrator: env variables config parsed failed:", err)
-		os.Exit(1)
+	if envErr := envconfig.Process("", &config); envErr != nil {
+		return nil, fmt.Errorf("migrator: env config: %w", envErr)
 	}
-	return &config, err
+	return &config, nil
 }
 
 type Config struct {

@@ -31,7 +31,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	bot, err := telegram.NewBot(cfg.TelegramToken)
 	if err != nil {
 		slog.Error("run: bot initialization error", slog.String("error", err.Error()))
-		os.Exit(1)
+		return fmt.Errorf("telegram bot: %w", err)
 	}
 
 	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL)
@@ -54,14 +54,14 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	r := chi.NewRouter()
 	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/x-yaml")
-		if _, err := w.Write(botopenapi.ContractYAML); err != nil {
-			slog.Error("swagger yaml write error", slog.String("error", err.Error()), slog.String("event", "swagger"))
+		if _, werr := w.Write(botopenapi.ContractYAML); werr != nil {
+			slog.Error("swagger yaml write error", slog.String("error", werr.Error()), slog.String("event", "swagger"))
 		}
 	})
 	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if _, err := w.Write([]byte(botswagger.SwaggerHTML)); err != nil {
-			slog.Error("swagger html write error", slog.String("error", err.Error()), slog.String("event", "swagger"))
+		if _, werr := w.Write([]byte(botswagger.SwaggerHTML)); werr != nil {
+			slog.Error("swagger html write error", slog.String("error", werr.Error()), slog.String("event", "swagger"))
 		}
 	})
 	updatesHandler := bothttp.NewHandler(bot)

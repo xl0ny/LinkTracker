@@ -28,17 +28,17 @@ func (c *Checker) Check(ctx context.Context, link domain.Link) (domain.LinkCheck
 	prev := link.LastUpdated
 	switch {
 	case u.Host == "github.com":
-		out, err := c.github.CheckLink(ctx, link.URL, prev)
-		if err != nil {
-			return domain.LinkCheckOutcome{}, fmt.Errorf("github check: %w", err)
+		ghOut, ghErr := c.github.CheckLink(ctx, link.URL, prev)
+		if ghErr != nil {
+			return domain.LinkCheckOutcome{}, fmt.Errorf("github check: %w", ghErr)
 		}
-		return out, nil
+		return ghOut, nil
 	case u.Host == "stackoverflow.com" || strings.HasSuffix(u.Host, ".stackoverflow.com"):
-		out, err := c.stackover.CheckQuestion(ctx, link.URL, prev)
-		if err != nil {
-			return domain.LinkCheckOutcome{}, fmt.Errorf("stackoverflow check: %w", err)
+		soOut, soErr := c.stackover.CheckQuestion(ctx, link.URL, prev)
+		if soErr != nil {
+			return domain.LinkCheckOutcome{}, fmt.Errorf("stackoverflow check: %w", soErr)
 		}
-		return out, nil
+		return soOut, nil
 	default:
 		return domain.LinkCheckOutcome{}, nil
 	}

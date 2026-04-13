@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -19,7 +20,7 @@ import (
 type Config struct {
 	BotURL string `envconfig:"APP_BOT_URL"`
 	Port   string `envconfig:"APP_SCRAPPER_PORT"`
-	//db
+	// db
 	AccessType       string `envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
 	PostgresUser     string `envconfig:"POSTGRES_USER"`
 	PostgresPassword string `envconfig:"POSTGRES_PASSWORD"`
@@ -120,11 +121,11 @@ func Load() (*Config, error) {
 	if strings.TrimSpace(c.Scheduler.Interval) == "" {
 		c.Scheduler.Interval = "1m"
 	}
-	if _, err := parseSchedulerInterval(c.Scheduler.Interval); err != nil {
+	if _, parseErr := parseSchedulerInterval(c.Scheduler.Interval); parseErr != nil {
 		slog.Warn(
 			"scrapper config: invalid scheduler.interval, using default 1m",
 			slog.String("scheduler_interval", c.Scheduler.Interval),
-			slog.String("error", err.Error()),
+			slog.String("error", parseErr.Error()),
 		)
 		c.Scheduler.Interval = "1m"
 	}
@@ -142,20 +143,20 @@ func (c *Config) SchedulerInterval() time.Duration {
 func parseSchedulerInterval(raw string) (time.Duration, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return 0, fmt.Errorf("empty interval")
+		return 0, errors.New("empty interval")
 	}
-	if value, err := strconv.Atoi(raw); err == nil {
+	if value, atoiErr := strconv.Atoi(raw); atoiErr == nil {
 		if value <= 0 {
-			return 0, fmt.Errorf("interval must be > 0")
+			return 0, errors.New("interval must be > 0")
 		}
 		return time.Duration(value) * time.Second, nil
 	}
-	d, err := time.ParseDuration(raw)
-	if err != nil {
-		return 0, err
+	d, durErr := time.ParseDuration(raw)
+	if durErr != nil {
+		return 0, fmt.Errorf("parse duration: %w", durErr)
 	}
 	if d <= 0 {
-		return 0, fmt.Errorf("interval must be > 0")
+		return 0, errors.New("interval must be > 0")
 	}
 	return d, nil
 }
@@ -166,10 +167,10 @@ func validateBotURL(raw string) error {
 		return fmt.Errorf("invalid URL: %w", err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("scheme must be http or https")
+		return errors.New("scheme must be http or https")
 	}
 	if u.Host == "" {
-		return fmt.Errorf("host is required")
+		return errors.New("host is required")
 	}
 	return nil
 }

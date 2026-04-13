@@ -1,7 +1,8 @@
-package sql
+package pgrepo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,19 +12,19 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
 
-type repository struct {
+type Repository struct {
 	pool *pgxpool.Pool
 }
 
-func NewRepository(ctx context.Context, dsn string) (*repository, error) {
+func NewRepository(ctx context.Context, dsn string) (*Repository, error) {
 	pool, err := newPool(ctx, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("repo: NewRepository - pool creation error (%w)", err)
 	}
-	return &repository{pool: pool}, nil
+	return &Repository{pool: pool}, nil
 }
 
-func (r *repository) AddChat(ctx context.Context, id int64) error {
+func (r *Repository) AddChat(ctx context.Context, id int64) error {
 	const q = `INSERT INTO chats (telegram_id)
 	VALUES ($1)
 	ON CONFLICT (telegram_id) DO NOTHING`
@@ -40,7 +41,7 @@ func (r *repository) AddChat(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *repository) DeleteChat(ctx context.Context, id int64) error {
+func (r *Repository) DeleteChat(ctx context.Context, id int64) error {
 	const q = `DELETE FROM chats WHERE telegram_id = $1`
 
 	cmd, err := r.pool.Exec(ctx, q, id)
@@ -55,11 +56,11 @@ func (r *repository) DeleteChat(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (r *repository) Close() {
+func (r *Repository) Close() {
 	r.pool.Close()
 }
 
-func (r *repository) AddLink(ctx context.Context, chatID int64, link string, tags, filters *[]string) error {
+func (r *Repository) AddLink(ctx context.Context, chatID int64, link string, tags, filters *[]string) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("repo: AddLink - begin (%w)", err)
@@ -69,7 +70,7 @@ func (r *repository) AddLink(ctx context.Context, chatID int64, link string, tag
 	var internalChatID int64
 	err = tx.QueryRow(ctx, `SELECT id FROM chats WHERE telegram_id = $1`, chatID).Scan(&internalChatID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ErrChatNotFound
 		}
 		return fmt.Errorf("repo: AddLink - load chat (%w)", err)
@@ -91,7 +92,7 @@ func (r *repository) AddLink(ctx context.Context, chatID int64, link string, tag
 		ON CONFLICT (chat_id, link_id) DO NOTHING
 		RETURNING id`, internalChatID, linkRowID).Scan(&subID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.ErrLinkAlreadyExists
 		}
 		return fmt.Errorf("repo: AddLink - subscription (%w)", err)
@@ -101,67 +102,25 @@ func (r *repository) AddLink(ctx context.Context, chatID int64, link string, tag
 	if tags != nil {
 		tagVals = *tags
 	}
-	for _, v := range tagVals {
-		if v == "" {
-			continue
-		}
-		tagID, err := r.getOrCreateTagID(ctx, tx, v)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO link_tag (subscription_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, subID, tagID); err != nil {
-			return fmt.Errorf("repo: AddLink - link_tag (%w)", err)
-		}
+	if insErr := r.insertLinkTags(ctx, tx, subID, tagVals); insErr != nil {
+		return insErr
 	}
 
 	filterVals := []string{}
 	if filters != nil {
 		filterVals = *filters
 	}
-	for _, v := range filterVals {
-		if v == "" {
-			continue
-		}
-		filterID, err := r.getOrCreateFilterID(ctx, tx, v)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO link_filter (subscription_id, filter_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, subID, filterID); err != nil {
-			return fmt.Errorf("repo: AddLink - link_filter (%w)", err)
-		}
+	if insErr := r.insertLinkFilters(ctx, tx, subID, filterVals); insErr != nil {
+		return insErr
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("repo: AddLink - commit (%w)", err)
+	if cerr := tx.Commit(ctx); cerr != nil {
+		return fmt.Errorf("repo: AddLink - commit (%w)", cerr)
 	}
 	return nil
 }
 
-func (r *repository) getOrCreateTagID(ctx context.Context, tx pgx.Tx, value string) (int64, error) {
-	var id int64
-	err := tx.QueryRow(ctx, `
-		INSERT INTO tag (value) VALUES ($1)
-		ON CONFLICT (value) DO UPDATE SET value = tag.value
-		RETURNING id`, value).Scan(&id)
-	if err != nil {
-		return 0, fmt.Errorf("repo: tag upsert (%w)", err)
-	}
-	return id, nil
-}
-
-func (r *repository) getOrCreateFilterID(ctx context.Context, tx pgx.Tx, value string) (int64, error) {
-	var id int64
-	err := tx.QueryRow(ctx, `
-		INSERT INTO filter (value) VALUES ($1)
-		ON CONFLICT (value) DO UPDATE SET value = filter.value
-		RETURNING id`, value).Scan(&id)
-	if err != nil {
-		return 0, fmt.Errorf("repo: filter upsert (%w)", err)
-	}
-	return id, nil
-}
-
-func (r *repository) GetLinks(ctx context.Context, chatID int64, limit, offset int) ([]domain.Link, error) {
+func (r *Repository) GetLinks(ctx context.Context, chatID int64, limit, offset int) ([]domain.Link, error) {
 	q := `
 SELECT l.url, s.last_updated_at,
 	COALESCE((
@@ -196,30 +155,30 @@ ORDER BY s.id`
 		var url string
 		var lastUp *time.Time
 		var tags, filters []string
-		if err := rows.Scan(&url, &lastUp, &tags, &filters); err != nil {
-			return nil, fmt.Errorf("repo: GetLinks - scan (%w)", err)
+		if scanErr := rows.Scan(&url, &lastUp, &tags, &filters); scanErr != nil {
+			return nil, fmt.Errorf("repo: GetLinks - scan (%w)", scanErr)
 		}
 		out = append(out, rowToDomainLink(url, lastUp, tags, filters))
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("repo: GetLinks - rows (%w)", err)
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("repo: GetLinks - rows (%w)", rowsErr)
 	}
 
 	if len(out) == 0 {
 		var exists int
-		err := r.pool.QueryRow(ctx, `SELECT 1 FROM chats WHERE telegram_id = $1 LIMIT 1`, chatID).Scan(&exists)
-		if err == pgx.ErrNoRows {
+		rowErr := r.pool.QueryRow(ctx, `SELECT 1 FROM chats WHERE telegram_id = $1 LIMIT 1`, chatID).Scan(&exists)
+		if errors.Is(rowErr, pgx.ErrNoRows) {
 			return nil, domain.ErrChatNotFound
 		}
-		if err != nil {
-			return nil, fmt.Errorf("repo: GetLinks - chat check (%w)", err)
+		if rowErr != nil {
+			return nil, fmt.Errorf("repo: GetLinks - chat check (%w)", rowErr)
 		}
 	}
 
 	return out, nil
 }
 
-func (r *repository) GetChats(ctx context.Context, limit, offset int) (map[int64]domain.Chat, error) {
+func (r *Repository) GetChats(ctx context.Context, limit, offset int) (map[int64]domain.Chat, error) {
 	q := `
 SELECT c.telegram_id, l.url, s.last_updated_at,
 	COALESCE((
@@ -273,8 +232,8 @@ ORDER BY c.telegram_id, s.id`
 		var url *string
 		var lastUp *time.Time
 		var tags, filters []string
-		if err := rows.Scan(&tgID, &url, &lastUp, &tags, &filters); err != nil {
-			return nil, fmt.Errorf("repo: GetChats - scan (%w)", err)
+		if scanErr := rows.Scan(&tgID, &url, &lastUp, &tags, &filters); scanErr != nil {
+			return nil, fmt.Errorf("repo: GetChats - scan (%w)", scanErr)
 		}
 		ch, ok := chats[tgID]
 		if !ok {
@@ -286,8 +245,8 @@ ORDER BY c.telegram_id, s.id`
 			ch.Links = append(ch.Links, rowToDomainLink(*url, lastUp, tags, filters))
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("repo: GetChats - rows (%w)", err)
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("repo: GetChats - rows (%w)", rowsErr)
 	}
 
 	out := make(map[int64]domain.Chat, len(chats))
@@ -297,7 +256,7 @@ ORDER BY c.telegram_id, s.id`
 	return out, nil
 }
 
-func (r *repository) ListSubscribedLinks(ctx context.Context, limit, offset int) ([]domain.SubscribedLink, error) {
+func (r *Repository) ListSubscribedLinks(ctx context.Context, limit, offset int) ([]domain.SubscribedLink, error) {
 	q := `
 SELECT c.telegram_id, l.url, s.last_updated_at,
 	COALESCE((
@@ -332,21 +291,21 @@ ORDER BY c.telegram_id, s.id`
 		var url string
 		var lastUp *time.Time
 		var tags, filters []string
-		if err := rows.Scan(&chatID, &url, &lastUp, &tags, &filters); err != nil {
-			return nil, fmt.Errorf("repo: ListSubscribedLinks - scan (%w)", err)
+		if scanErr := rows.Scan(&chatID, &url, &lastUp, &tags, &filters); scanErr != nil {
+			return nil, fmt.Errorf("repo: ListSubscribedLinks - scan (%w)", scanErr)
 		}
 		out = append(out, domain.SubscribedLink{
 			ChatID: chatID,
 			Link:   rowToDomainLink(url, lastUp, tags, filters),
 		})
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("repo: ListSubscribedLinks - rows (%w)", err)
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("repo: ListSubscribedLinks - rows (%w)", rowsErr)
 	}
 	return out, nil
 }
 
-func (r *repository) DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error) {
+func (r *Repository) DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return domain.Link{}, fmt.Errorf("repo: DeleteLink - begin (%w)", err)
@@ -376,7 +335,7 @@ WHERE c.telegram_id = $1 AND l.url = $2`
 	var tags, filters []string
 	err = tx.QueryRow(ctx, sel, chatID, linkURL).Scan(&subID, &url, &lastUp, &tags, &filters)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			if errNF := r.ensureChatExists(ctx, tx, chatID); errNF != nil {
 				return domain.Link{}, errNF
 			}
@@ -385,28 +344,16 @@ WHERE c.telegram_id = $1 AND l.url = $2`
 		return domain.Link{}, fmt.Errorf("repo: DeleteLink - select (%w)", err)
 	}
 
-	if _, err := tx.Exec(ctx, `DELETE FROM subscriptions WHERE id = $1`, subID); err != nil {
-		return domain.Link{}, fmt.Errorf("repo: DeleteLink - delete (%w)", err)
+	if _, execErr := tx.Exec(ctx, `DELETE FROM subscriptions WHERE id = $1`, subID); execErr != nil {
+		return domain.Link{}, fmt.Errorf("repo: DeleteLink - delete (%w)", execErr)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return domain.Link{}, fmt.Errorf("repo: DeleteLink - commit (%w)", err)
+	if commitErr := tx.Commit(ctx); commitErr != nil {
+		return domain.Link{}, fmt.Errorf("repo: DeleteLink - commit (%w)", commitErr)
 	}
 	return rowToDomainLink(url, lastUp, tags, filters), nil
 }
 
-func (r *repository) ensureChatExists(ctx context.Context, tx pgx.Tx, telegramID int64) error {
-	var one int
-	err := tx.QueryRow(ctx, `SELECT 1 FROM chats WHERE telegram_id = $1 LIMIT 1`, telegramID).Scan(&one)
-	if err == pgx.ErrNoRows {
-		return domain.ErrChatNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("repo: ensureChatExists (%w)", err)
-	}
-	return nil
-}
-
-func (r *repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error {
+func (r *Repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error {
 	cmdTag, err := r.pool.Exec(ctx, `
 		UPDATE subscriptions s
 		SET last_updated_at = $3
@@ -422,9 +369,9 @@ func (r *repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, link
 	return nil
 }
 
-func (r *repository) CreateTag(ctx context.Context, value string) (int64, error) {
+func (r *Repository) CreateTag(ctx context.Context, value string) (int64, error) {
 	if value == "" {
-		return 0, fmt.Errorf("repo: CreateTag - empty value")
+		return 0, errors.New("repo: CreateTag - empty value")
 	}
 	var id int64
 	err := r.pool.QueryRow(ctx, `
@@ -434,13 +381,13 @@ func (r *repository) CreateTag(ctx context.Context, value string) (int64, error)
 	if err == nil {
 		return id, nil
 	}
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, domain.ErrTagAlreadyExists
 	}
 	return 0, fmt.Errorf("repo: CreateTag (%w)", err)
 }
 
-func (r *repository) ListTags(ctx context.Context, limit, offset int) ([]domain.Tag, error) {
+func (r *Repository) ListTags(ctx context.Context, limit, offset int) ([]domain.Tag, error) {
 	q := `SELECT id, value FROM tag ORDER BY id`
 	args := []any{}
 	if limit > 0 {
@@ -454,18 +401,21 @@ func (r *repository) ListTags(ctx context.Context, limit, offset int) ([]domain.
 	defer rows.Close()
 	var out []domain.Tag
 	for rows.Next() {
-		var t domain.Tag
-		if err := rows.Scan(&t.ID, &t.Value); err != nil {
-			return nil, fmt.Errorf("repo: ListTags scan (%w)", err)
+		var tagRow domain.Tag
+		if scanErr := rows.Scan(&tagRow.ID, &tagRow.Value); scanErr != nil {
+			return nil, fmt.Errorf("repo: ListTags scan (%w)", scanErr)
 		}
-		out = append(out, t)
+		out = append(out, tagRow)
 	}
-	return out, rows.Err()
+	if rerr := rows.Err(); rerr != nil {
+		return nil, fmt.Errorf("repo: ListTags rows (%w)", rerr)
+	}
+	return out, nil
 }
 
-func (r *repository) UpdateTag(ctx context.Context, id int64, value string) error {
+func (r *Repository) UpdateTag(ctx context.Context, id int64, value string) error {
 	if value == "" {
-		return fmt.Errorf("repo: UpdateTag - empty value")
+		return errors.New("repo: UpdateTag - empty value")
 	}
 	cmd, err := r.pool.Exec(ctx, `UPDATE tag SET value = $2 WHERE id = $1`, id, value)
 	if err != nil {
@@ -477,13 +427,81 @@ func (r *repository) UpdateTag(ctx context.Context, id int64, value string) erro
 	return nil
 }
 
-func (r *repository) DeleteTag(ctx context.Context, id int64) error {
+func (r *Repository) DeleteTag(ctx context.Context, id int64) error {
 	cmd, err := r.pool.Exec(ctx, `DELETE FROM tag WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("repo: DeleteTag (%w)", err)
 	}
 	if cmd.RowsAffected() == 0 {
 		return domain.ErrTagNotFound
+	}
+	return nil
+}
+
+func (r *Repository) insertLinkTags(ctx context.Context, tx pgx.Tx, subID int64, tagVals []string) error {
+	for _, v := range tagVals {
+		if v == "" {
+			continue
+		}
+		tagID, tagErr := r.getOrCreateTagID(ctx, tx, v)
+		if tagErr != nil {
+			return tagErr
+		}
+		if _, execErr := tx.Exec(ctx, `INSERT INTO link_tag (subscription_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, subID, tagID); execErr != nil {
+			return fmt.Errorf("repo: AddLink - link_tag (%w)", execErr)
+		}
+	}
+	return nil
+}
+
+func (r *Repository) insertLinkFilters(ctx context.Context, tx pgx.Tx, subID int64, filterVals []string) error {
+	for _, v := range filterVals {
+		if v == "" {
+			continue
+		}
+		filterID, filterErr := r.getOrCreateFilterID(ctx, tx, v)
+		if filterErr != nil {
+			return filterErr
+		}
+		if _, execErr := tx.Exec(ctx, `INSERT INTO link_filter (subscription_id, filter_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, subID, filterID); execErr != nil {
+			return fmt.Errorf("repo: AddLink - link_filter (%w)", execErr)
+		}
+	}
+	return nil
+}
+
+func (r *Repository) getOrCreateTagID(ctx context.Context, tx pgx.Tx, value string) (int64, error) {
+	var id int64
+	qerr := tx.QueryRow(ctx, `
+		INSERT INTO tag (value) VALUES ($1)
+		ON CONFLICT (value) DO UPDATE SET value = tag.value
+		RETURNING id`, value).Scan(&id)
+	if qerr != nil {
+		return 0, fmt.Errorf("repo: tag upsert (%w)", qerr)
+	}
+	return id, nil
+}
+
+func (r *Repository) getOrCreateFilterID(ctx context.Context, tx pgx.Tx, value string) (int64, error) {
+	var id int64
+	qerr := tx.QueryRow(ctx, `
+		INSERT INTO filter (value) VALUES ($1)
+		ON CONFLICT (value) DO UPDATE SET value = filter.value
+		RETURNING id`, value).Scan(&id)
+	if qerr != nil {
+		return 0, fmt.Errorf("repo: filter upsert (%w)", qerr)
+	}
+	return id, nil
+}
+
+func (r *Repository) ensureChatExists(ctx context.Context, tx pgx.Tx, telegramID int64) error {
+	var one int
+	rowErr := tx.QueryRow(ctx, `SELECT 1 FROM chats WHERE telegram_id = $1 LIMIT 1`, telegramID).Scan(&one)
+	if errors.Is(rowErr, pgx.ErrNoRows) {
+		return domain.ErrChatNotFound
+	}
+	if rowErr != nil {
+		return fmt.Errorf("repo: ensureChatExists (%w)", rowErr)
 	}
 	return nil
 }
@@ -507,5 +525,9 @@ func newPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("repo: newPool - pgx config parse err (%w)", err)
 	}
-	return pgxpool.NewWithConfig(ctx, cfg)
+	pool, poolErr := pgxpool.NewWithConfig(ctx, cfg)
+	if poolErr != nil {
+		return nil, fmt.Errorf("repo: newPool - pool create (%w)", poolErr)
+	}
+	return pool, nil
 }

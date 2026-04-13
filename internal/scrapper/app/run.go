@@ -17,7 +17,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/checker"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/orm"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/sql"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/pgrepo"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/github"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/stackoverflow"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/swagger"
@@ -41,14 +41,14 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/x-yaml")
-		if _, err := w.Write(scrapperapi.ContractYAML); err != nil {
-			slog.Error("scrapper run: swagger yaml write error", slog.String("error", err.Error()))
+		if _, werr := w.Write(scrapperapi.ContractYAML); werr != nil {
+			slog.Error("scrapper run: swagger yaml write error", slog.String("error", werr.Error()))
 		}
 	})
 	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if _, err := w.Write([]byte(swagger.SwaggerHTML)); err != nil {
-			slog.Error("scrapper run: swagger html write error", slog.String("error", err.Error()))
+		if _, werr := w.Write([]byte(swagger.SwaggerHTML)); werr != nil {
+			slog.Error("scrapper run: swagger html write error", slog.String("error", werr.Error()))
 		}
 	})
 
@@ -84,8 +84,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		slog.String("swagger_ui", swaggerUI))
 
 	<-ctx.Done()
-	if err := srv.Shutdown(context.Background()); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
+	if shutErr := srv.Shutdown(context.Background()); shutErr != nil {
+		return fmt.Errorf("shutdown: %w", shutErr)
 	}
 	return nil
 }
@@ -98,9 +98,17 @@ func newChatRepository(ctx context.Context, cfg *config.Config) (application.Cha
 	dsn := cfg.PostgresDSN()
 	switch mode {
 	case "SQL":
-		return sql.NewRepository(ctx, dsn)
+		repo, sqlErr := pgrepo.NewRepository(ctx, dsn)
+		if sqlErr != nil {
+			return nil, fmt.Errorf("scrapper: pgrepo repository: %w", sqlErr)
+		}
+		return repo, nil
 	case "ORM":
-		return orm.NewRepository(ctx, dsn)
+		repo, ormErr := orm.NewRepository(ctx, dsn)
+		if ormErr != nil {
+			return nil, fmt.Errorf("scrapper: orm repository: %w", ormErr)
+		}
+		return repo, nil
 	default:
 		return nil, fmt.Errorf("scrapper: unknown access_type %q (use SQL or ORM)", cfg.AccessType)
 	}

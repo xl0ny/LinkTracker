@@ -15,7 +15,11 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/textutil"
 )
 
-const previewRunes = 200
+const (
+	previewRunes            = 200
+	minPathPartsGitHub      = 2
+	pathPartsForIssueOrPull = 4
+)
 
 type Client struct {
 	http    *http.Client
@@ -59,22 +63,22 @@ func parseGitHubRef(raw string) (ghRef, error) {
 		return ghRef{}, errors.New("not a github url")
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(parts) < 2 {
+	if len(parts) < minPathPartsGitHub {
 		return ghRef{}, fmt.Errorf("invalid repo path: %s", u.Path)
 	}
 	ref := ghRef{Owner: parts[0], Repo: parts[1]}
-	if len(parts) >= 4 {
+	if len(parts) >= pathPartsForIssueOrPull {
 		switch parts[2] {
 		case "issues":
-			n, err := strconv.Atoi(parts[3])
-			if err != nil {
+			n, atoiErr := strconv.Atoi(parts[3])
+			if atoiErr != nil {
 				return ghRef{}, fmt.Errorf("invalid issue number: %s", parts[3])
 			}
 			ref.IssueN = n
 			return ref, nil
 		case "pull":
-			n, err := strconv.Atoi(parts[3])
-			if err != nil {
+			n, atoiErr := strconv.Atoi(parts[3])
+			if atoiErr != nil {
 				return ghRef{}, fmt.Errorf("invalid pull number: %s", parts[3])
 			}
 			ref.IssueN = n
@@ -123,6 +127,15 @@ func (c *Client) CheckLink(ctx context.Context, pageURL string, since time.Time)
 		return c.checkRepo(ctx, ref, since)
 	}
 	return c.checkIssueOrPull(ctx, ref, since)
+}
+
+// CheckUpdated оставлен для обратной совместимости; для ДЗ используйте CheckLink.
+func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.Time, err error) {
+	out, err := c.CheckLink(ctx, repoURL, time.Time{})
+	if err != nil {
+		return time.Time{}, fmt.Errorf("github CheckUpdated: %w", err)
+	}
+	return out.Latest, nil
 }
 
 func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (domain.LinkCheckOutcome, error) {
@@ -283,17 +296,8 @@ func (c *Client) getJSON(ctx context.Context, apiURL string, dst any) error {
 	if resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("github api error: status=%d", resp.StatusCode)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
-		return fmt.Errorf("decode: %w", err)
+	if decErr := json.NewDecoder(resp.Body).Decode(dst); decErr != nil {
+		return fmt.Errorf("decode: %w", decErr)
 	}
 	return nil
-}
-
-// CheckUpdated оставлен для обратной совместимости; для ДЗ используйте CheckLink.
-func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.Time, err error) {
-	out, err := c.CheckLink(ctx, repoURL, time.Time{})
-	if err != nil {
-		return time.Time{}, err
-	}
-	return out.Latest, nil
 }

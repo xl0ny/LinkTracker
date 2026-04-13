@@ -1,6 +1,8 @@
 package application
 
 import (
+	"fmt"
+
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
@@ -38,13 +40,21 @@ func (d *Dispatcher) Dispatch(action domain.Action) (text string, err error) {
 			if action.Command != "track" {
 				d.state.Clear(action.ChatID)
 			}
-			return cmd.Handle(action)
+			resp, hErr := cmd.Handle(action)
+			if hErr != nil {
+				return "", fmt.Errorf("dispatcher: command %s: %w", action.Command, hErr)
+			}
+			return resp, nil
 		}
 		d.state.Clear(action.ChatID)
 		return "Неизвестная команда. Используйте /help для списка команд", nil
 	}
 	if d.plain != nil {
-		return d.plain.HandlePlainMessage(action)
+		resp, pErr := d.plain.HandlePlainMessage(action)
+		if pErr != nil {
+			return "", fmt.Errorf("dispatcher: plain message: %w", pErr)
+		}
+		return resp, nil
 	}
 	return "", nil
 }

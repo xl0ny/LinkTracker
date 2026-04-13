@@ -109,19 +109,19 @@ func (s *Scheduler) processLink(ctx context.Context, sub domain.SubscribedLink) 
 		return fmt.Errorf("check link: %w", err)
 	}
 	if sub.Link.LastUpdated.IsZero() && !out.Latest.IsZero() {
-		if err := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, out.Latest); err != nil {
-			return fmt.Errorf("update link date: %w", err)
+		if upErr := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, out.Latest); upErr != nil {
+			return fmt.Errorf("update link date: %w", upErr)
 		}
 		return nil
 	}
 	if !out.Changed {
 		return nil
 	}
-	if err := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, out.Description); err != nil {
-		return fmt.Errorf("notify update: %w", err)
+	if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, out.Description); nfErr != nil {
+		return fmt.Errorf("notify update: %w", nfErr)
 	}
-	if err := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, out.Latest); err != nil {
-		return fmt.Errorf("update link date: %w", err)
+	if upErr := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, out.Latest); upErr != nil {
+		return fmt.Errorf("update link date: %w", upErr)
 	}
 	return nil
 }
@@ -162,9 +162,9 @@ func (s *Scheduler) loadAllSubscribedLinks(ctx context.Context) ([]domain.Subscr
 		offset int
 	)
 	for {
-		batch, err := s.repo.ListSubscribedLinks(ctx, s.batchSize, offset)
-		if err != nil {
-			return nil, err
+		batch, listErr := s.repo.ListSubscribedLinks(ctx, s.batchSize, offset)
+		if listErr != nil {
+			return nil, fmt.Errorf("scheduler: list subscribed links: %w", listErr)
 		}
 		if len(batch) == 0 {
 			break
@@ -219,7 +219,7 @@ func (r *runState) getErrors() []linkProcessError {
 }
 
 func (s *Scheduler) startWorkers(ctx context.Context) {
-	for i := 0; i < s.workers; i++ {
+	for range s.workers {
 		s.workersWG.Go(func() {
 			if s.onWorkerStart != nil {
 				s.onWorkerStart()
