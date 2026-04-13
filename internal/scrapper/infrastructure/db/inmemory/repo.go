@@ -81,7 +81,7 @@ func (r *repository) GetLinks(_ context.Context, chatID int64, limit, offset int
 	return all[offset:end], nil
 }
 
-func (r *repository) GetChats(_ context.Context, limit, offset int) (map[int64]domain.Chat, error) {
+func (r *repository) GetChats(_ context.Context, _, _ int) (map[int64]domain.Chat, error) {
 	chats := make(map[int64]domain.Chat)
 	for id, chat := range r.Chats {
 		chats[id] = domain.Chat{

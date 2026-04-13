@@ -1,4 +1,4 @@
-package sql
+package pgrepo
 
 import (
 	"context"
@@ -13,6 +13,6 @@ func rollbackUnlessCommitted(ctx context.Context, tx pgx.Tx) {
 		return
 	}
 	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		slog.Warn("sql repo: transaction rollback", slog.String("error", err.Error()))
+		slog.Warn("pgrepo: transaction rollback", slog.String("error", err.Error()))
 	}
 }

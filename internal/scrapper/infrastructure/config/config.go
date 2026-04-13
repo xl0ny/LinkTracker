@@ -25,7 +25,7 @@ type Config struct {
 	PostgresHost     string `yaml:"postgres_host" envconfig:"POSTGRES_HOST"`
 	PostgresPort     string `yaml:"postgres_port" envconfig:"POSTGRES_PORT"`
 	PostgresSSLMode  string `yaml:"postgres_ssl_mode" envconfig:"POSTGRES_SSL_MODE"`
-	Logging struct {
+	Logging          struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 }
