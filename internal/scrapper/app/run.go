@@ -62,7 +62,14 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	gh := github.NewClient(nil, os.Getenv("GITHUB_TOKEN"))
 	so := stackoverflow.NewClient(nil)
 	lc := checker.New(gh, so)
-	sch := application.NewScheduler(repo, lc, notifier)
+	sch := application.NewScheduler(
+		repo,
+		lc,
+		notifier,
+		cfg.Batch.Size,
+		cfg.Scheduler.Workers,
+		cfg.SchedulerInterval(),
+	)
 	go sch.Run(ctx)
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}

@@ -2,3 +2,10 @@ access_type: "SQL" # SQL | ORM
 
 logging:
   mode: "INFO" #variants ["INFO", "DEBUG"]
+
+batch:
+  size: 250 #50 - 500
+
+scheduler:
+  interval: "1m"
+  workers: 4

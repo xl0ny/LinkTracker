@@ -152,6 +152,10 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 	require.NoError(t, repo.AddChat(ctx, chatID))
 	require.ErrorIs(t, repo.AddChat(ctx, chatID), domain.ErrChatAlreadyExists)
 
+	emptySubs, err := repo.ListSubscribedLinks(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Empty(t, emptySubs)
+
 	require.ErrorIs(t, repo.AddLink(ctx, 999, "https://x.test", nil, nil), domain.ErrChatNotFound)
 
 	link := "https://example.com/track"
@@ -175,6 +179,33 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 	require.NoError(t, err)
 	require.Len(t, two, 1)
 	require.NotEqual(t, one[0].URL, two[0].URL)
+
+	allSubs, err := repo.ListSubscribedLinks(ctx, 0, 0)
+	require.NoError(t, err)
+	require.Len(t, allSubs, 2)
+	require.Equal(t, chatID, allSubs[0].ChatID)
+	require.Equal(t, chatID, allSubs[1].ChatID)
+	require.Equal(t, link, allSubs[0].Link.URL)
+	require.Equal(t, "https://example.com/second", allSubs[1].Link.URL)
+
+	subsPage1, err := repo.ListSubscribedLinks(ctx, 1, 0)
+	require.NoError(t, err)
+	require.Len(t, subsPage1, 1)
+	require.Equal(t, link, subsPage1[0].Link.URL)
+
+	subsPage2, err := repo.ListSubscribedLinks(ctx, 1, 1)
+	require.NoError(t, err)
+	require.Len(t, subsPage2, 1)
+	require.Equal(t, "https://example.com/second", subsPage2[0].Link.URL)
+
+	require.NoError(t, repo.AddChat(ctx, 99))
+	require.NoError(t, repo.AddLink(ctx, 99, "https://ninety-nine.test", nil, nil))
+	multiSubs, err := repo.ListSubscribedLinks(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, multiSubs, 3)
+	require.Equal(t, int64(99), multiSubs[2].ChatID)
+	require.Equal(t, "https://ninety-nine.test", multiSubs[2].Link.URL)
+	require.NoError(t, repo.DeleteChat(ctx, 99))
 
 	chatsAll, err := repo.GetChats(ctx, 0, 0)
 	require.NoError(t, err)

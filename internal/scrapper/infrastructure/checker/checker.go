@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"time"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/github"
@@ -21,26 +20,26 @@ func New(githubClient *github.Client, stackoverClient *stackoverflow.Client) *Ch
 	return &Checker{github: githubClient, stackover: stackoverClient}
 }
 
-func (c *Checker) Check(ctx context.Context, link domain.Link) (changed bool, latest time.Time, err error) {
+func (c *Checker) Check(ctx context.Context, link domain.Link) (domain.LinkCheckOutcome, error) {
 	u, err := url.Parse(link.URL)
 	if err != nil {
-		return false, time.Time{}, fmt.Errorf("parse url: %w", err)
+		return domain.LinkCheckOutcome{}, fmt.Errorf("parse url: %w", err)
 	}
 	prev := link.LastUpdated
 	switch {
 	case u.Host == "github.com":
-		latest, err = c.github.CheckUpdated(ctx, link.URL)
+		out, err := c.github.CheckLink(ctx, link.URL, prev)
 		if err != nil {
-			return false, time.Time{}, fmt.Errorf("github check: %w", err)
+			return domain.LinkCheckOutcome{}, fmt.Errorf("github check: %w", err)
 		}
-		return latest.After(prev), latest, nil
+		return out, nil
 	case u.Host == "stackoverflow.com" || strings.HasSuffix(u.Host, ".stackoverflow.com"):
-		latest, err = c.stackover.CheckUpdated(ctx, link.URL)
+		out, err := c.stackover.CheckQuestion(ctx, link.URL, prev)
 		if err != nil {
-			return false, time.Time{}, fmt.Errorf("stackoverflow check: %w", err)
+			return domain.LinkCheckOutcome{}, fmt.Errorf("stackoverflow check: %w", err)
 		}
-		return latest.After(prev), latest, nil
+		return out, nil
 	default:
-		return false, time.Time{}, nil
+		return domain.LinkCheckOutcome{}, nil
 	}
 }

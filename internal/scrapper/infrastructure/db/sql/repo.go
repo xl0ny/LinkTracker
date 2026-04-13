@@ -297,6 +297,55 @@ ORDER BY c.telegram_id, s.id`
 	return out, nil
 }
 
+func (r *repository) ListSubscribedLinks(ctx context.Context, limit, offset int) ([]domain.SubscribedLink, error) {
+	q := `
+SELECT c.telegram_id, l.url, s.last_updated_at,
+	COALESCE((
+		SELECT array_agg(t.value ORDER BY t.value)
+		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
+		WHERE lt.subscription_id = s.id
+	), ARRAY[]::text[]),
+	COALESCE((
+		SELECT array_agg(f.value ORDER BY f.value)
+		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
+		WHERE lf.subscription_id = s.id
+	), ARRAY[]::text[])
+FROM chats c
+JOIN subscriptions s ON s.chat_id = c.id
+JOIN links l ON l.id = s.link_id
+ORDER BY c.telegram_id, s.id`
+	args := []any{}
+	if limit > 0 {
+		q += ` LIMIT $1 OFFSET $2`
+		args = append(args, limit, offset)
+	}
+
+	rows, err := r.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("repo: ListSubscribedLinks - query (%w)", err)
+	}
+	defer rows.Close()
+
+	var out []domain.SubscribedLink
+	for rows.Next() {
+		var chatID int64
+		var url string
+		var lastUp *time.Time
+		var tags, filters []string
+		if err := rows.Scan(&chatID, &url, &lastUp, &tags, &filters); err != nil {
+			return nil, fmt.Errorf("repo: ListSubscribedLinks - scan (%w)", err)
+		}
+		out = append(out, domain.SubscribedLink{
+			ChatID: chatID,
+			Link:   rowToDomainLink(url, lastUp, tags, filters),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("repo: ListSubscribedLinks - rows (%w)", err)
+	}
+	return out, nil
+}
+
 func (r *repository) DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {

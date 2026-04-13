@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
@@ -15,15 +17,39 @@ import (
 )
 
 type Config struct {
-	BotURL     string `envconfig:"APP_BOT_URL"`
-	Port       string `envconfig:"APP_SCRAPPER_PORT"`
-	AccessType string `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
-	PostgresUser     string `yaml:"postgres_user" envconfig:"POSTGRES_USER"`
-	PostgresPassword string `yaml:"postgres_password" envconfig:"POSTGRES_PASSWORD"`
-	PostgresDB       string `yaml:"postgres_db" envconfig:"POSTGRES_DB"`
-	PostgresHost     string `yaml:"postgres_host" envconfig:"POSTGRES_HOST"`
-	PostgresPort     string `yaml:"postgres_port" envconfig:"POSTGRES_PORT"`
-	PostgresSSLMode  string `yaml:"postgres_ssl_mode" envconfig:"POSTGRES_SSL_MODE"`
+	BotURL string `envconfig:"APP_BOT_URL"`
+	Port   string `envconfig:"APP_SCRAPPER_PORT"`
+	//db
+	AccessType       string `envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
+	PostgresUser     string `envconfig:"POSTGRES_USER"`
+	PostgresPassword string `envconfig:"POSTGRES_PASSWORD"`
+	PostgresDB       string `envconfig:"POSTGRES_DB"`
+	PostgresHost     string `envconfig:"POSTGRES_HOST"`
+	PostgresPort     string `envconfig:"POSTGRES_PORT"`
+	PostgresSSLMode  string `envconfig:"POSTGRES_SSL_MODE"`
+	// scrapper (из config.yaml через scrapperFileConfig)
+	Batch struct {
+		Size int
+	}
+	Scheduler struct {
+		Interval string
+		Workers  int
+	}
+	Logging struct {
+		Mode string
+	}
+}
+
+// scrapperFileConfig — только нечувствительные к репозиторию поля из cmd/scrapper/config.yaml.
+type scrapperFileConfig struct {
+	AccessType string `yaml:"access_type"`
+	Batch      struct {
+		Size int `yaml:"size"`
+	} `yaml:"batch"`
+	Scheduler struct {
+		Interval string `yaml:"interval"`
+		Workers  int    `yaml:"workers"`
+	} `yaml:"scheduler"`
 	Logging struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
@@ -71,10 +97,67 @@ func Load() (*Config, error) {
 		slog.Error("scrapper config: read cmd/scrapper/config.yaml error", slog.String("error", err.Error()))
 		return &c, nil
 	}
-	if err = yaml.Unmarshal(data, &c); err != nil {
+	var fc scrapperFileConfig
+	if err = yaml.Unmarshal(data, &fc); err != nil {
 		slog.Error("scrapper config: parse config.yaml error", slog.String("error", err.Error()))
+	} else {
+		if fc.AccessType != "" {
+			c.AccessType = fc.AccessType
+		}
+		c.Batch.Size = fc.Batch.Size
+		c.Scheduler.Interval = fc.Scheduler.Interval
+		c.Scheduler.Workers = fc.Scheduler.Workers
+		c.Logging.Mode = fc.Logging.Mode
+	}
+	if c.Batch.Size < 50 || c.Batch.Size > 500 {
+		slog.Warn("scrapper config: invalid batch.size, using default 100", slog.Int("batch_size", c.Batch.Size))
+		c.Batch.Size = 100
+	}
+	if c.Scheduler.Workers < 1 {
+		slog.Warn("scrapper config: invalid scheduler.workers, using default 4", slog.Int("workers", c.Scheduler.Workers))
+		c.Scheduler.Workers = 4
+	}
+	if strings.TrimSpace(c.Scheduler.Interval) == "" {
+		c.Scheduler.Interval = "1m"
+	}
+	if _, err := parseSchedulerInterval(c.Scheduler.Interval); err != nil {
+		slog.Warn(
+			"scrapper config: invalid scheduler.interval, using default 1m",
+			slog.String("scheduler_interval", c.Scheduler.Interval),
+			slog.String("error", err.Error()),
+		)
+		c.Scheduler.Interval = "1m"
 	}
 	return &c, nil
+}
+
+func (c *Config) SchedulerInterval() time.Duration {
+	d, err := parseSchedulerInterval(c.Scheduler.Interval)
+	if err != nil {
+		return time.Minute
+	}
+	return d
+}
+
+func parseSchedulerInterval(raw string) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, fmt.Errorf("empty interval")
+	}
+	if value, err := strconv.Atoi(raw); err == nil {
+		if value <= 0 {
+			return 0, fmt.Errorf("interval must be > 0")
+		}
+		return time.Duration(value) * time.Second, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("interval must be > 0")
+	}
+	return d, nil
 }
 
 func validateBotURL(raw string) error {

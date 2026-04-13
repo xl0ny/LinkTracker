@@ -14,6 +14,7 @@ type ChatRepository interface {
 	AddLink(ctx context.Context, chatID int64, link string, tags, filters *[]string) error
 	GetLinks(ctx context.Context, chatID int64, limit, offset int) ([]domain.Link, error)
 	GetChats(ctx context.Context, limit, offset int) (map[int64]domain.Chat, error)
+	ListSubscribedLinks(ctx context.Context, limit, offset int) ([]domain.SubscribedLink, error)
 	DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error)
 	UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error
 	CreateTag(ctx context.Context, value string) (int64, error)
