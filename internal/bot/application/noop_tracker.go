@@ -4,7 +4,7 @@ import "context"
 
 type noopTracker struct{}
 
-func NewNoopTracker() LinkTracker {
+func NewNoopTracker() Tracker {
 	return &noopTracker{}
 }
 

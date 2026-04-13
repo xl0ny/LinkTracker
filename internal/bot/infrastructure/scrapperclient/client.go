@@ -15,7 +15,7 @@ type LinkTracker struct {
 	api *Client
 }
 
-func NewLinkTracker(serverURL string) (*LinkTracker, error) {
+func NewLinkTracker(serverURL string) (application.Tracker, error) {
 	url := strings.TrimSpace(serverURL)
 	if url == "" {
 		return nil, errors.New("scrapper URL is required")
