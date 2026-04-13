@@ -31,30 +31,39 @@ func NewDispatcher(cmds []Command, plain PlainMessageHandler, state *TrackStateS
 }
 
 func (d *Dispatcher) Dispatch(action domain.Action) (text string, err error) {
-	if action.Command != "" {
-		if action.Command == "cancel" {
-			d.state.Clear(action.ChatID)
-			return "Отменено.", nil
-		}
-		if cmd, ok := d.handlers[action.Command]; ok {
-			if action.Command != "track" {
-				d.state.Clear(action.ChatID)
-			}
-			resp, hErr := cmd.Handle(action)
-			if hErr != nil {
-				return "", fmt.Errorf("dispatcher: command %s: %w", action.Command, hErr)
-			}
-			return resp, nil
-		}
+	if action.Command == "" {
+		return d.dispatchPlain(action)
+	}
+	return d.dispatchCommand(action)
+}
+
+func (d *Dispatcher) dispatchCommand(action domain.Action) (string, error) {
+	if action.Command == "cancel" {
+		d.state.Clear(action.ChatID)
+		return "Отменено.", nil
+	}
+	cmd, ok := d.handlers[action.Command]
+	if !ok {
 		d.state.Clear(action.ChatID)
 		return "Неизвестная команда. Используйте /help для списка команд", nil
 	}
-	if d.plain != nil {
-		resp, pErr := d.plain.HandlePlainMessage(action)
-		if pErr != nil {
-			return "", fmt.Errorf("dispatcher: plain message: %w", pErr)
-		}
-		return resp, nil
+	if action.Command != "track" {
+		d.state.Clear(action.ChatID)
 	}
-	return "", nil
+	resp, hErr := cmd.Handle(action)
+	if hErr != nil {
+		return "", fmt.Errorf("dispatcher: command %s: %w", action.Command, hErr)
+	}
+	return resp, nil
+}
+
+func (d *Dispatcher) dispatchPlain(action domain.Action) (string, error) {
+	if d.plain == nil {
+		return "", nil
+	}
+	resp, pErr := d.plain.HandlePlainMessage(action)
+	if pErr != nil {
+		return "", fmt.Errorf("dispatcher: plain message: %w", pErr)
+	}
+	return resp, nil
 }

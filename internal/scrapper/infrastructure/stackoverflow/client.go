@@ -98,6 +98,19 @@ func (c *Client) CheckQuestion(ctx context.Context, questionURL string, since ti
 		return domain.LinkCheckOutcome{}, err
 	}
 
+	watermark := computeSOWatermark(q, awrap, qComments, aComments)
+	if since.IsZero() {
+		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
+	}
+
+	best := pickSOBestSince(awrap, qComments, aComments, since.Unix())
+	if best == nil {
+		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
+	}
+	return soOutcomeFromBest(best, q, questionURL), nil
+}
+
+func computeSOWatermark(q questionItem, awrap seWrapper[answerItem], qComments seWrapper[commentItem], aComments []commentItem) time.Time {
 	watermark := time.Unix(q.LastActivityDate, 0).UTC()
 	for _, a := range awrap.Items {
 		t := time.Unix(a.CreationDate, 0).UTC()
@@ -117,12 +130,10 @@ func (c *Client) CheckQuestion(ctx context.Context, questionURL string, since ti
 			watermark = t
 		}
 	}
+	return watermark
+}
 
-	if since.IsZero() {
-		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
-	}
-
-	sinceU := since.Unix()
+func pickSOBestSince(awrap seWrapper[answerItem], qComments seWrapper[commentItem], aComments []commentItem, sinceU int64) *soCandidate {
 	var best *soCandidate
 	take := func(cand soCandidate) {
 		if cand.at <= sinceU {
@@ -142,10 +153,10 @@ func (c *Client) CheckQuestion(ctx context.Context, questionURL string, since ti
 	for _, cm := range aComments {
 		take(soCandidate{kind: soKindAnswerComment, at: cm.CreationDate, comment: cm})
 	}
-	if best == nil {
-		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
-	}
+	return best
+}
 
+func soOutcomeFromBest(best *soCandidate, q questionItem, questionURL string) domain.LinkCheckOutcome {
 	var desc string
 	var latest time.Time
 	switch best.kind {
@@ -175,7 +186,7 @@ func (c *Client) CheckQuestion(ctx context.Context, questionURL string, since ti
 		Changed:     true,
 		Latest:      latest,
 		Description: desc,
-	}, nil
+	}
 }
 
 // CheckUpdated оставлен для обратной совместимости; для ДЗ используйте CheckQuestion.
