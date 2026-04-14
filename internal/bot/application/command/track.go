@@ -15,10 +15,10 @@ type linkAdder interface {
 
 type Track struct {
 	tracker linkAdder
-	state   *application.TrackStateStore
+	state   application.TrackStateStore
 }
 
-func NewTrack(tracker linkAdder, state *application.TrackStateStore) *Track {
+func NewTrack(tracker linkAdder, state application.TrackStateStore) *Track {
 	return &Track{tracker: tracker, state: state}
 }
 

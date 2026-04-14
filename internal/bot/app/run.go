@@ -8,13 +8,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	contracts "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/scrapperclient"
+	botswagger "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/swagger"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/telegram"
 	bothttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
@@ -33,7 +36,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL)
 	if err != nil {
-		return fmt.Errorf("app run: Link tracker creation error - %w", err)
+		slog.Warn("scrapper client disabled", slog.String("error", err.Error()), slog.String("event", "scrapper_client"))
+		tracker = application.NewNoopTracker()
 	}
 
 	stateStore := application.NewTrackStateStore()
@@ -43,12 +47,26 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	actions := bot.ReceiveUpdates(ctx)
 	dispatcher := application.NewDispatcher(commands, trackCmd, stateStore)
-
+	var wg sync.WaitGroup
 	for range workerCount {
-		go application.Worker(actions, dispatcher, bot)
+		wg.Go(func() {
+			application.Worker(actions, dispatcher, bot)
+		})
 	}
 
 	r := chi.NewRouter()
+	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/x-yaml")
+		if _, errWrite := w.Write(contracts.Bot); errWrite != nil {
+			slog.Error("run: swagger yaml write error", slog.String("error", errWrite.Error()))
+		}
+	})
+	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if _, errWrite := w.Write([]byte(botswagger.SwaggerHTML)); errWrite != nil {
+			slog.Error("run: swagger html write error", slog.String("error", errWrite.Error()))
+		}
+	})
 	updatesHandler := bothttp.NewHandler(bot)
 	botapi.HandlerFromMux(updatesHandler, r)
 
@@ -69,10 +87,11 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	<-ctx.Done()
 
-	err = srv.Shutdown(context.Background())
-	if err != nil {
-		slog.Error("run: server graceful shutdown error", slog.String("error", err.Error()))
+	shutdownErr := srv.Shutdown(context.Background())
+	if shutdownErr != nil {
+		slog.Error("run: server graceful shutdown error", slog.String("error", shutdownErr.Error()))
 	}
 	slog.Info("run: shutting down")
+	wg.Wait()
 	return nil
 }

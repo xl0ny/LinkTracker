@@ -169,14 +169,26 @@ func (h *Handler) PostLinks(w http.ResponseWriter, r *http.Request, params api.P
 
 func (h *Handler) GetLinks(w http.ResponseWriter, r *http.Request, params api.GetLinksParams) {
 	links, err := h.uc.GetLinks(r.Context(), params.TgChatId)
-	if err != nil && err.Error() == errChatNotFound {
+	if err != nil {
+		if err.Error() == errChatNotFound {
+			helper.WriteError(
+				w,
+				http.StatusNotFound,
+				"failed to get links",
+				"CHAT_NOT_FOUND",
+				"Чат не найден",
+				"ErrChatNotFound",
+				err.Error(),
+			)
+			return
+		}
 		helper.WriteError(
 			w,
-			http.StatusNotFound,
+			http.StatusInternalServerError,
 			"failed to get links",
-			"CHAT_NOT_FOUND",
-			"Чат не найден",
-			"ErrChatNotFound",
+			"INTERNAL_ERROR",
+			"Внутренняя ошибка",
+			"ErrInternal",
 			err.Error(),
 		)
 		return
