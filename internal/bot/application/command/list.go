@@ -12,11 +12,15 @@ import (
 const errChatNotFound = "chat not found"
 const msgUseStart = "Сначала используйте /start"
 
-type List struct {
-	tracker application.LinkTracker
+type linkLister interface {
+	ListLinks(ctx context.Context, chatID int64, tagFilter string) ([]application.LinkInfo, error)
 }
 
-func NewList(tracker application.LinkTracker) *List {
+type List struct {
+	tracker linkLister
+}
+
+func NewList(tracker linkLister) *List {
 	return &List{tracker: tracker}
 }
 

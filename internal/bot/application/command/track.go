@@ -9,12 +9,16 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
-type Track struct {
-	tracker application.LinkTracker
-	state   application.TrackStateStore
+type linkAdder interface {
+	AddLink(ctx context.Context, chatID int64, link string, tags []string) error
 }
 
-func NewTrack(tracker application.LinkTracker, state application.TrackStateStore) *Track {
+type Track struct {
+	tracker linkAdder
+	state   *application.TrackStateStore
+}
+
+func NewTrack(tracker linkAdder, state *application.TrackStateStore) *Track {
 	return &Track{tracker: tracker, state: state}
 }
 

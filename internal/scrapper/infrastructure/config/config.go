@@ -15,9 +15,8 @@ import (
 )
 
 type Config struct {
-	BotURL string `envconfig:"APP_BOT_URL"`
-	Port   string `envconfig:"APP_SCRAPPER_PORT"`
-
+	BotURL  string `envconfig:"APP_BOT_URL"`
+	Port    string `envconfig:"APP_SCRAPPER_PORT"`
 	Logging struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
