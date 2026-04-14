@@ -5,22 +5,22 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
-type fakeCmd struct {
-	name, desc, reply string
-}
-
-func (f fakeCmd) Name() string { return f.name }
-
-func (f fakeCmd) Description() string { return f.desc }
-
-func (f fakeCmd) Handle(domain.Action) (string, error) { return f.reply, nil }
-
 func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
-	d := NewDispatcher([]Command{fakeCmd{"start", "", "Добро пожаловать! Используйте /help для списка команд."}}, nil, NewTrackStateStore())
+	ctrl := gomock.NewController(t)
+	mockCmd := NewMockCommand(ctrl)
+	mockCmd.EXPECT().
+		Name().
+		Return("start")
+	mockCmd.EXPECT().
+		Handle(gomock.Any()).
+		Return("Добро пожаловать! Используйте /help для списка команд.", nil)
+
+	d := NewDispatcher([]Command{mockCmd}, nil, NewTrackStateStore())
 	action := domain.Action{Command: "start"}
 	text, err := d.Dispatch(action)
 	require.NoError(t, err)
@@ -29,7 +29,16 @@ func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
-	d := NewDispatcher([]Command{fakeCmd{"help", "", "/start\n/help"}}, nil, NewTrackStateStore())
+	ctrl := gomock.NewController(t)
+	mockCmd := NewMockCommand(ctrl)
+	mockCmd.EXPECT().
+		Name().
+		Return("help")
+	mockCmd.EXPECT().
+		Handle(gomock.Any()).
+		Return("/start\n/help", nil)
+
+	d := NewDispatcher([]Command{mockCmd}, nil, NewTrackStateStore())
 	action := domain.Action{Command: "help"}
 	text, err := d.Dispatch(action)
 	require.NoError(t, err)

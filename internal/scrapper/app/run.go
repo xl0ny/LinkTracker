@@ -10,7 +10,7 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
-	scrapperapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/api"
+	contracts "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/checker"
@@ -34,7 +34,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/x-yaml")
-		if _, err := w.Write(scrapperapi.ContractYAML); err != nil {
+		if _, err := w.Write(contracts.Scrapper); err != nil {
 			slog.Error("scrapper run: swagger yaml write error", slog.String("error", err.Error()))
 		}
 	})

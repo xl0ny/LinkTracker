@@ -14,6 +14,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/oapi-codegen/runtime v1.2.0
 	github.com/stretchr/testify v1.9.0
+	go.uber.org/mock v0.6.0
 )
 
 require (

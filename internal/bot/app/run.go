@@ -12,10 +12,12 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	contracts "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/scrapperclient"
+	botswagger "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/swagger"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/telegram"
 	bothttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
@@ -29,7 +31,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	bot, err := telegram.NewBot(cfg.TelegramToken)
 	if err != nil {
-		return fmt.Errorf("run: bot initialization: %w", err)
+		return fmt.Errorf("run: bot initialization error: %w", err)
 	}
 
 	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL)
@@ -53,6 +55,18 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	r := chi.NewRouter()
+	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/x-yaml")
+		if _, errWrite := w.Write(contracts.Bot); errWrite != nil {
+			slog.Error("run: swagger yaml write error", slog.String("error", errWrite.Error()))
+		}
+	})
+	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if _, errWrite := w.Write([]byte(botswagger.SwaggerHTML)); errWrite != nil {
+			slog.Error("run: swagger html write error", slog.String("error", errWrite.Error()))
+		}
+	})
 	updatesHandler := bothttp.NewHandler(bot)
 	botapi.HandlerFromMux(updatesHandler, r)
 
@@ -72,8 +86,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	slog.Info("run: http server started", slog.String("port", cfg.BotPort))
 
 	<-ctx.Done()
-	if errShutdown := srv.Shutdown(context.Background()); errShutdown != nil {
-		slog.Error("run: server graceful shutdown error", slog.String("error", errShutdown.Error()))
+
+	shutdownErr := srv.Shutdown(context.Background())
+	if shutdownErr != nil {
+		slog.Error("run: server graceful shutdown error", slog.String("error", shutdownErr.Error()))
 	}
 	slog.Info("run: shutting down")
 	wg.Wait()

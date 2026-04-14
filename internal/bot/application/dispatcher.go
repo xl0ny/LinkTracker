@@ -19,10 +19,10 @@ type PlainMessageHandler interface {
 type Dispatcher struct {
 	handlers map[string]Command
 	plain    PlainMessageHandler
-	state    *TrackStateStore
+	state    TrackStateStore
 }
 
-func NewDispatcher(cmds []Command, plain PlainMessageHandler, state *TrackStateStore) *Dispatcher {
+func NewDispatcher(cmds []Command, plain PlainMessageHandler, state TrackStateStore) *Dispatcher {
 	h := make(map[string]Command, len(cmds))
 	for _, c := range cmds {
 		h[c.Name()] = c
@@ -30,7 +30,7 @@ func NewDispatcher(cmds []Command, plain PlainMessageHandler, state *TrackStateS
 	return &Dispatcher{handlers: h, plain: plain, state: state}
 }
 
-func (d *Dispatcher) Dispatch(action domain.Action) (text string, err error) {
+func (d *Dispatcher) Dispatch(action domain.Action) (string, error) {
 	if action.Command != "" {
 		return d.dispatchSlashCommand(action)
 	}

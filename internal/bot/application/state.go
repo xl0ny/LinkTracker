@@ -18,22 +18,28 @@ type TrackState struct {
 	Link  string
 }
 
-type TrackStateStore struct {
+type TrackStateStore interface {
+	Get(chatID int64) *TrackState
+	Set(chatID int64, st *TrackState)
+	Clear(chatID int64)
+}
+
+type memoryTrackStateStore struct {
 	mu    sync.RWMutex
 	state map[int64]*TrackState
 }
 
-func NewTrackStateStore() *TrackStateStore {
-	return &TrackStateStore{state: make(map[int64]*TrackState)}
+func NewTrackStateStore() TrackStateStore {
+	return &memoryTrackStateStore{state: make(map[int64]*TrackState)}
 }
 
-func (s *TrackStateStore) Get(chatID int64) *TrackState {
+func (s *memoryTrackStateStore) Get(chatID int64) *TrackState {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.state[chatID]
 }
 
-func (s *TrackStateStore) Set(chatID int64, st *TrackState) {
+func (s *memoryTrackStateStore) Set(chatID int64, st *TrackState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if st == nil {
@@ -43,7 +49,7 @@ func (s *TrackStateStore) Set(chatID int64, st *TrackState) {
 	}
 }
 
-func (s *TrackStateStore) Clear(chatID int64) {
+func (s *memoryTrackStateStore) Clear(chatID int64) {
 	s.Set(chatID, nil)
 }
 
