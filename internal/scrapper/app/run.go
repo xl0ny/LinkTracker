@@ -66,8 +66,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}()
 
 	<-ctx.Done()
-	if err := srv.Shutdown(context.Background()); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
+	if shutdownErr := srv.Shutdown(context.Background()); shutdownErr != nil {
+		return fmt.Errorf("shutdown: %w", shutdownErr)
 	}
 	return nil
 }

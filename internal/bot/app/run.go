@@ -28,8 +28,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	bot, err := telegram.NewBot(cfg.TelegramToken)
 	if err != nil {
-		slog.Error("run: bot initialization error", slog.String("error", err.Error()))
-		os.Exit(1)
+		return fmt.Errorf("run: bot initialization error: %w", err)
 	}
 
 	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL)
