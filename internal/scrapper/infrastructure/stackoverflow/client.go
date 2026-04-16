@@ -91,23 +91,7 @@ func (c *Client) CheckQuestion(ctx context.Context, questionURL string, since ti
 	if err != nil {
 		return domain.LinkCheckOutcome{}, fmt.Errorf("parse question url: %w", err)
 	}
-	idStr := strconv.FormatInt(id, 10)
-
-	q, awrap, qComments, aComments, err := c.loadStackOverflowQuestionBundle(ctx, idStr)
-	if err != nil {
-		return domain.LinkCheckOutcome{}, err
-	}
-
-	watermark := computeSOWatermark(q, awrap, qComments, aComments)
-	if since.IsZero() {
-		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
-	}
-
-	best := pickSOBestSince(awrap, qComments, aComments, since.Unix())
-	if best == nil {
-		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
-	}
-	return soOutcomeFromBest(best, q, questionURL), nil
+	return c.checkQuestionByID(ctx, strconv.FormatInt(id, 10), since, questionURL)
 }
 
 func computeSOWatermark(q questionItem, awrap seWrapper[answerItem], qComments seWrapper[commentItem], aComments []commentItem) time.Time {
@@ -156,30 +140,28 @@ func pickSOBestSince(awrap seWrapper[answerItem], qComments seWrapper[commentIte
 	return best
 }
 
+func soLinkOrQuestion(link, questionURL string) string {
+	if link != "" {
+		return link
+	}
+	return questionURL
+}
+
 func soOutcomeFromBest(best *soCandidate, q questionItem, questionURL string) domain.LinkCheckOutcome {
 	var desc string
 	var latest time.Time
 	switch best.kind {
 	case soKindAnswer:
 		latest = time.Unix(best.answer.CreationDate, 0).UTC()
-		link := best.answer.Link
-		if link == "" {
-			link = questionURL
-		}
+		link := soLinkOrQuestion(best.answer.Link, questionURL)
 		desc = formatSOUpdate("новый ответ", q.Title, best.answer.Owner.DisplayName, latest, best.answer.Body, link)
 	case soKindQuestionComment:
 		latest = time.Unix(best.comment.CreationDate, 0).UTC()
-		link := best.comment.Link
-		if link == "" {
-			link = questionURL
-		}
+		link := soLinkOrQuestion(best.comment.Link, questionURL)
 		desc = formatSOUpdate("новый комментарий к вопросу", q.Title, best.comment.Owner.DisplayName, latest, best.comment.Body, link)
 	case soKindAnswerComment:
 		latest = time.Unix(best.comment.CreationDate, 0).UTC()
-		link := best.comment.Link
-		if link == "" {
-			link = questionURL
-		}
+		link := soLinkOrQuestion(best.comment.Link, questionURL)
 		desc = formatSOUpdate("новый комментарий к ответу", q.Title, best.comment.Owner.DisplayName, latest, best.comment.Body, link)
 	}
 	return domain.LinkCheckOutcome{
@@ -196,6 +178,24 @@ func (c *Client) CheckUpdated(ctx context.Context, questionURL string) (latest t
 		return time.Time{}, fmt.Errorf("stackoverflow CheckUpdated: %w", err)
 	}
 	return out.Latest, nil
+}
+
+func (c *Client) checkQuestionByID(ctx context.Context, idStr string, since time.Time, questionURL string) (domain.LinkCheckOutcome, error) {
+	q, awrap, qComments, aComments, err := c.loadStackOverflowQuestionBundle(ctx, idStr)
+	if err != nil {
+		return domain.LinkCheckOutcome{}, err
+	}
+
+	watermark := computeSOWatermark(q, awrap, qComments, aComments)
+	if since.IsZero() {
+		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
+	}
+
+	best := pickSOBestSince(awrap, qComments, aComments, since.Unix())
+	if best == nil {
+		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
+	}
+	return soOutcomeFromBest(best, q, questionURL), nil
 }
 
 func (c *Client) loadStackOverflowQuestionBundle(ctx context.Context, idStr string) (questionItem, seWrapper[answerItem], seWrapper[commentItem], []commentItem, error) {

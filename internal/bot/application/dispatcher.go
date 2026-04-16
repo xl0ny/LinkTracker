@@ -31,10 +31,12 @@ func NewDispatcher(cmds []Command, plain PlainMessageHandler, state *TrackStateS
 }
 
 func (d *Dispatcher) Dispatch(action domain.Action) (text string, err error) {
-	if action.Command == "" {
+	switch {
+	case action.Command != "":
+		return d.dispatchCommand(action)
+	default:
 		return d.dispatchPlain(action)
 	}
-	return d.dispatchCommand(action)
 }
 
 func (d *Dispatcher) dispatchCommand(action domain.Action) (string, error) {
