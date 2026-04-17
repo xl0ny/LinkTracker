@@ -28,7 +28,7 @@ type Config struct {
 	PostgresHost     string `envconfig:"POSTGRES_HOST"`
 	PostgresPort     string `envconfig:"POSTGRES_PORT"`
 	PostgresSSLMode  string `envconfig:"POSTGRES_SSL_MODE"`
-	// scrapper (из config.yaml через scrapperFileConfig)
+	// scrapper
 	Batch struct {
 		Size int
 	}

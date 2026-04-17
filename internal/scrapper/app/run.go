@@ -25,6 +25,19 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/handler"
 )
 
+type Repository interface {
+	application.SchedulerLinks
+	application.ChatRepository
+	application.LinkRepository
+	application.TagRepository
+	Close()
+}
+
+var (
+	_ Repository = (*pgrepo.Repository)(nil)
+	_ Repository = (*orm.Repository)(nil)
+)
+
 func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -35,7 +48,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	defer repo.Close()
 
-	usecase := application.NewChatUC(repo)
+	usecase := application.NewChatUC(repo, repo)
 	h := handler.NewHandler(usecase)
 	r := chi.NewRouter()
 
@@ -90,7 +103,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	return nil
 }
 
-func newChatRepository(ctx context.Context, cfg *config.Config) (application.ChatRepository, error) {
+func newChatRepository(ctx context.Context, cfg *config.Config) (Repository, error) {
 	mode := strings.ToUpper(strings.TrimSpace(cfg.AccessType))
 	if mode == "" {
 		mode = "SQL"

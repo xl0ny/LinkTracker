@@ -21,13 +21,13 @@ type botNotifier interface {
 	NotifyFailedLinks(ctx context.Context, chatID int64, links []string) error
 }
 
-type schedulerRrepository interface {
+type SchedulerLinks interface {
 	ListSubscribedLinks(ctx context.Context, limit, offset int) ([]domain.SubscribedLink, error)
 	UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error
 }
 
 type Scheduler struct {
-	repo        schedulerRrepository
+	repo        SchedulerLinks
 	linkChecker linkChecker
 	botNotifier botNotifier
 	batchSize   int
@@ -43,7 +43,7 @@ type Scheduler struct {
 }
 
 func NewScheduler(
-	repo schedulerRrepository,
+	repo SchedulerLinks,
 	lc linkChecker,
 	bn botNotifier,
 	batchSize, workers int,

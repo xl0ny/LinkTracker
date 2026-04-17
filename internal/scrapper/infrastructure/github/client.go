@@ -129,7 +129,6 @@ func (c *Client) CheckLink(ctx context.Context, pageURL string, since time.Time)
 	return c.checkIssueOrPull(ctx, ref, since)
 }
 
-// CheckUpdated оставлен для обратной совместимости; для ДЗ используйте CheckLink.
 func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.Time, err error) {
 	out, err := c.CheckLink(ctx, repoURL, time.Time{})
 	if err != nil {

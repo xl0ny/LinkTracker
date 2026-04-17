@@ -19,10 +19,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application"
+	scrapperapp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/app"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/orm"
 	sqlrepo "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/pgrepo"
+)
+
+var (
+	_ scrapperapp.Repository = (*sqlrepo.Repository)(nil)
+	_ scrapperapp.Repository = (*orm.Repository)(nil)
 )
 
 func projectRoot(t *testing.T) string {
@@ -119,17 +124,17 @@ func TestChatRepository_SQLAndORM(t *testing.T) {
 
 	tests := []struct {
 		name string
-		new  func(context.Context, string) (application.ChatRepository, error)
+		new  func(context.Context, string) (scrapperapp.Repository, error)
 	}{
 		{
 			name: "SQL",
-			new: func(c context.Context, d string) (application.ChatRepository, error) {
+			new: func(c context.Context, d string) (scrapperapp.Repository, error) {
 				return sqlrepo.NewRepository(c, d)
 			},
 		},
 		{
 			name: "ORM",
-			new: func(c context.Context, d string) (application.ChatRepository, error) {
+			new: func(c context.Context, d string) (scrapperapp.Repository, error) {
 				return orm.NewRepository(c, d)
 			},
 		},
@@ -145,7 +150,7 @@ func TestChatRepository_SQLAndORM(t *testing.T) {
 	}
 }
 
-func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.ChatRepository) {
+func runRepositoryScenarios(t *testing.T, ctx context.Context, repo scrapperapp.Repository) {
 	t.Helper()
 	chatID := int64(42)
 

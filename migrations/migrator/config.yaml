@@ -1,4 +1,3 @@
 migrations:
   dir: "./migrations"
   direction: "up"
-  steps: 1
