@@ -1,4 +1,11 @@
 access_type: "SQL" # SQL | ORM
 
+db:
+  postgres_user: postgres
+  postgres_db: linktracker
+  postgres_host: localhost
+  postgres_port: "5432"
+  postgres_ssl_mode: disable
+
 logging:
   mode: "INFO" #variants ["INFO", "DEBUG"]

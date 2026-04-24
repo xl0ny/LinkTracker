@@ -88,7 +88,7 @@ func startPostgres(t *testing.T) (ctx context.Context, dsn string, terminate fun
 
 func waitPostgresReady(t *testing.T, ctx context.Context, dsn string) {
 	t.Helper()
-	deadline := time.Now().Add(45 * time.Second)
+	deadline := time.Now().Add(3 * time.Second)
 	var last error
 	for time.Now().Before(deadline) {
 		p, err := pgxpool.New(ctx, dsn)

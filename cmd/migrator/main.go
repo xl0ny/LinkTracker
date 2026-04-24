@@ -26,12 +26,12 @@ func run() int {
 	}
 
 	dsn := db.BuildPostgresDSN(
-		config.PostgresUser,
+		config.DB.PostgresUser,
 		config.PostgresPassword,
-		config.PostgresHost,
-		config.PostgresPort,
-		config.PostgresDB,
-		config.PostgresSSLMode,
+		config.DB.PostgresHost,
+		config.DB.PostgresPort,
+		config.DB.PostgresDB,
+		config.DB.PostgresSSLMode,
 	)
 
 	migrationsDir, err := filepath.Abs(config.Migrations.Dir)

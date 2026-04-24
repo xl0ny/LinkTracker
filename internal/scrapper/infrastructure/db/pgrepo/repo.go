@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -17,11 +18,19 @@ type Repository struct {
 }
 
 func NewRepository(ctx context.Context, dsn string) (*Repository, error) {
-	pool, err := newPool(ctx, dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("repo: newPool - pgx config parse err (%w)", err)
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("repo: NewRepository - pool creation error (%w)", err)
 	}
 	return &Repository{pool: pool}, nil
+}
+
+func (r *Repository) Close() {
+	r.pool.Close()
 }
 
 func (r *Repository) AddChat(ctx context.Context, id int64) error {
@@ -54,10 +63,6 @@ func (r *Repository) DeleteChat(ctx context.Context, id int64) error {
 	}
 
 	return nil
-}
-
-func (r *Repository) Close() {
-	r.pool.Close()
 }
 
 func (r *Repository) AddLink(ctx context.Context, chatID int64, link string, tags, filters *[]string) error {
@@ -471,14 +476,11 @@ func rowToDomainLink(url string, lastUp *time.Time, tags, filters []string) doma
 	return l
 }
 
-func newPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("repo: newPool - pgx config parse err (%w)", err)
+func rollbackUnlessCommitted(ctx context.Context, tx pgx.Tx) {
+	if tx == nil {
+		return
 	}
-	pool, poolErr := pgxpool.NewWithConfig(ctx, cfg)
-	if poolErr != nil {
-		return nil, fmt.Errorf("repo: newPool - pool create (%w)", poolErr)
+	if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+		slog.Warn("pgrepo: transaction rollback", slog.String("error", err.Error()))
 	}
-	return pool, nil
 }

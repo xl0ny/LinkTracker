@@ -16,16 +16,11 @@ import (
 )
 
 type Config struct {
-	BotURL           string `envconfig:"APP_BOT_URL"`
-	Port             string `envconfig:"APP_SCRAPPER_PORT"`
-	AccessType       string `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
-	PostgresUser     string `yaml:"postgres_user" envconfig:"POSTGRES_USER"`
-	PostgresPassword string `yaml:"postgres_password" envconfig:"POSTGRES_PASSWORD"`
-	PostgresDB       string `yaml:"postgres_db" envconfig:"POSTGRES_DB"`
-	PostgresHost     string `yaml:"postgres_host" envconfig:"POSTGRES_HOST"`
-	PostgresPort     string `yaml:"postgres_port" envconfig:"POSTGRES_PORT"`
-	PostgresSSLMode  string `yaml:"postgres_ssl_mode" envconfig:"POSTGRES_SSL_MODE"`
-	Logging          struct {
+	commondb.Config `yaml:",inline"`
+	BotURL          string `envconfig:"APP_BOT_URL"`
+	Port            string `envconfig:"APP_SCRAPPER_PORT"`
+	AccessType      string `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
+	Logging         struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 }
@@ -36,12 +31,12 @@ func (c *Config) GetLevel() slog.Level {
 
 func (c *Config) PostgresDSN() string {
 	return commondb.BuildPostgresDSN(
-		c.PostgresUser,
+		c.DB.PostgresUser,
 		c.PostgresPassword,
-		c.PostgresHost,
-		c.PostgresPort,
-		c.PostgresDB,
-		c.PostgresSSLMode,
+		c.DB.PostgresHost,
+		c.DB.PostgresPort,
+		c.DB.PostgresDB,
+		c.DB.PostgresSSLMode,
 	)
 }
 
@@ -50,30 +45,29 @@ func Load() (*Config, error) {
 		slog.Info("scrapper config: .env not loaded (optional)", slog.String("error", err.Error()))
 	}
 	var c Config
-	if err := envconfig.Process("", &c); err != nil {
-		return nil, fmt.Errorf("config: %w", err)
+	data, err := os.ReadFile("cmd/scrapper/config.yaml")
+	if err != nil {
+		slog.Error("scrapper config: read cmd/scrapper/config.yaml error", slog.String("error", err.Error()))
+		return nil, fmt.Errorf("config: read cmd/scrapper/config.yaml: %w", err)
+	}
+	if err = yaml.Unmarshal(data, &c); err != nil {
+		return nil, fmt.Errorf("config: parse cmd/scrapper/config.yaml: %w", err)
+	}
+	if envErr := envconfig.Process("", &c); envErr != nil {
+		return nil, fmt.Errorf("config: %w", envErr)
 	}
 	c.BotURL = strings.TrimSpace(c.BotURL)
 	if c.BotURL == "" {
 		c.BotURL = "http://localhost:8081"
 		slog.Info("scrapper config: APP_BOT_URL default", slog.String("bot_url", c.BotURL))
 	}
-	if err := validateBotURL(c.BotURL); err != nil {
-		return nil, fmt.Errorf("config: APP_BOT_URL: %w", err)
+	if validateErr := validateBotURL(c.BotURL); validateErr != nil {
+		return nil, fmt.Errorf("config: APP_BOT_URL: %w", validateErr)
 	}
 	c.Port = strings.TrimSpace(c.Port)
 	if c.Port == "" {
 		c.Port = "8080"
 		slog.Info("scrapper config: APP_SCRAPPER_PORT default", slog.String("port", c.Port))
-	}
-
-	data, err := os.ReadFile("cmd/scrapper/config.yaml")
-	if err != nil {
-		slog.Error("scrapper config: read cmd/scrapper/config.yaml error", slog.String("error", err.Error()))
-		return &c, nil
-	}
-	if err = yaml.Unmarshal(data, &c); err != nil {
-		slog.Error("scrapper config: parse config.yaml error", slog.String("error", err.Error()))
 	}
 	return &c, nil
 }

@@ -2,15 +2,15 @@ services:
   db:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
-      POSTGRES_DB: ${POSTGRES_DB:-linktracker}
+      POSTGRES_DB: linktracker
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app} -d ${POSTGRES_DB:-linktracker}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d linktracker"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -27,7 +27,7 @@ services:
       - "-path"
       - "/migrations"
       - "-database"
-      - "postgres://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-linktracker}?sslmode=disable"
+      - "postgres://postgres:${POSTGRES_PASSWORD:-app}@db:5432/linktracker?sslmode=disable"
       - "up"
 
 volumes:
