@@ -11,7 +11,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 )
 
 func main() {
@@ -19,22 +19,22 @@ func main() {
 }
 
 func run() int {
-	config, err := db.GetConfig()
+	cfg, err := config.GetConfig()
 	if err != nil {
 		log.Println("migrator: config loading failed:", err)
 		return 1
 	}
 
-	dsn := db.BuildPostgresDSN(
-		config.PostgresUser,
-		config.PostgresPassword,
-		config.PostgresHost,
-		config.PostgresPort,
-		config.PostgresDB,
-		config.PostgresSSLMode,
+	dsn := config.BuildPostgresDSN(
+		cfg.PostgresUser,
+		cfg.PostgresPassword,
+		cfg.PostgresHost,
+		cfg.PostgresPort,
+		cfg.PostgresDB,
+		cfg.PostgresSSLMode,
 	)
 
-	migrationsDir, err := filepath.Abs(config.Migrations.Dir)
+	migrationsDir, err := filepath.Abs(cfg.Migrations.Dir)
 	if err != nil {
 		log.Println("migrator: migrations path:", err)
 		return 1
@@ -54,7 +54,7 @@ func run() int {
 		}
 	}()
 
-	if migErr := runMigration(m, config.Migrations.Direction, config.Migrations.Steps); migErr != nil && !errors.Is(migErr, migrate.ErrNoChange) {
+	if migErr := runMigration(m, cfg.Migrations.Direction, cfg.Migrations.Steps); migErr != nil && !errors.Is(migErr, migrate.ErrNoChange) {
 		log.Println("migration failed:", migErr)
 		return 1
 	}

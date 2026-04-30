@@ -13,7 +13,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
-	commondb "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
 )
 
@@ -39,11 +39,21 @@ type Config struct {
 	Logging struct {
 		Mode string
 	}
+	//kafka
+	config.Kafka
+	config.KafkaProducer
 }
 
 // scrapperFileConfig — только нечувствительные к репозиторию поля из cmd/scrapper/config.yaml.
 type scrapperFileConfig struct {
 	AccessType string `yaml:"access_type"`
+	Postgres   struct {
+		User    string `yaml:"user"`
+		DB      string `yaml:"db"`
+		Host    string `yaml:"host"`
+		Port    string `yaml:"port"`
+		SSLMode string `yaml:"ssl_mode"`
+	} `yaml:"postgres"`
 	Batch      struct {
 		Size int `yaml:"size"`
 	} `yaml:"batch"`
@@ -61,7 +71,7 @@ func (c *Config) GetLevel() slog.Level {
 }
 
 func (c *Config) PostgresDSN() string {
-	return commondb.BuildPostgresDSN(
+	return config.BuildPostgresDSN(
 		c.PostgresUser,
 		c.PostgresPassword,
 		c.PostgresHost,
@@ -105,10 +115,33 @@ func Load() (*Config, error) {
 		if fc.AccessType != "" {
 			c.AccessType = fc.AccessType
 		}
+		if fc.Postgres.User != "" {
+			c.PostgresUser = fc.Postgres.User
+		}
+		if fc.Postgres.DB != "" {
+			c.PostgresDB = fc.Postgres.DB
+		}
+		if fc.Postgres.Host != "" {
+			c.PostgresHost = fc.Postgres.Host
+		}
+		if fc.Postgres.Port != "" {
+			c.PostgresPort = fc.Postgres.Port
+		}
+		if fc.Postgres.SSLMode != "" {
+			c.PostgresSSLMode = fc.Postgres.SSLMode
+		}
 		c.Batch.Size = fc.Batch.Size
 		c.Scheduler.Interval = fc.Scheduler.Interval
 		c.Scheduler.Workers = fc.Scheduler.Workers
 		c.Logging.Mode = fc.Logging.Mode
+	}
+	if strings.TrimSpace(c.PostgresUser) == "" ||
+		strings.TrimSpace(c.PostgresPassword) == "" ||
+		strings.TrimSpace(c.PostgresDB) == "" ||
+		strings.TrimSpace(c.PostgresHost) == "" ||
+		strings.TrimSpace(c.PostgresPort) == "" ||
+		strings.TrimSpace(c.PostgresSSLMode) == "" {
+		return nil, fmt.Errorf("config: postgres fields must be set via .env or cmd/scrapper/config.yaml")
 	}
 	if c.Batch.Size < 50 || c.Batch.Size > 500 {
 		slog.Warn("scrapper config: invalid batch.size, using default 100", slog.Int("batch_size", c.Batch.Size))

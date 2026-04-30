@@ -12,7 +12,7 @@ import (
 	"gorm.io/gen"
 	"gorm.io/gorm"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 )
 
 type envPostgres struct {
@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	dsn := db.BuildPostgresDSN(
+	dsn := config.BuildPostgresDSN(
 		cfg.PostgresUser,
 		cfg.PostgresPassword,
 		cfg.PostgresHost,

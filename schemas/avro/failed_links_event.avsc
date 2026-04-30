@@ -1,0 +1,26 @@
+{
+  "type": "record",
+  "name": "LinkUpdateFailedEvent",
+  "namespace": "linktracker.scrapper",
+  "doc": "Link update event for failed processing.",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "Unique event identifier for idempotency and tracing."
+    },
+    {
+      "name": "occurredAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "When the event was created."
+    },
+    {
+      "name": "description",
+      "type": "string",
+      "doc": "Human-readable failed links description."
+    }
+  ]
+}

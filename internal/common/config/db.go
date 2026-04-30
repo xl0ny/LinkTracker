@@ -1,4 +1,4 @@
-package db
+package config
 
 import (
 	"fmt"
@@ -11,12 +11,12 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
-func GetConfig() (*Config, error) {
-	data, err := os.ReadFile("cmd/migrator/config.yaml")
+func GetConfig() (*DB, error) {
+	data, err := os.ReadFile("migrations/migrator/config.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("migrator: read config: %w", err)
 	}
-	var config Config
+	var config DB
 	if yamlErr := yaml.Unmarshal(data, &config); yamlErr != nil {
 		return nil, fmt.Errorf("migrator: parse yaml: %w", yamlErr)
 	}
@@ -28,21 +28,29 @@ func GetConfig() (*Config, error) {
 	if envErr := envconfig.Process("", &config); envErr != nil {
 		return nil, fmt.Errorf("migrator: env config: %w", envErr)
 	}
+	if config.PostgresUser == "" ||
+		config.PostgresPassword == "" ||
+		config.PostgresDB == "" ||
+		config.PostgresHost == "" ||
+		config.PostgresPort == "" ||
+		config.PostgresSSLMode == "" {
+		return nil, fmt.Errorf("migrator: invalid config: postgres fields must be set via yaml or env")
+	}
 	return &config, nil
 }
 
-type Config struct {
+type DB struct {
 	Migrations struct {
 		Dir       string `yaml:"dir"`
 		Direction string `yaml:"direction"`
 		Steps     int    `yaml:"steps"`
 	} `yaml:"migrations"`
-	PostgresUser     string `envconfig:"POSTGRES_USER" required:"true"`
-	PostgresPassword string `envconfig:"POSTGRES_PASSWORD" required:"true"`
-	PostgresDB       string `envconfig:"POSTGRES_DB" required:"true"`
-	PostgresHost     string `envconfig:"POSTGRES_HOST" required:"true"`
-	PostgresPort     string `envconfig:"POSTGRES_PORT" required:"true"`
-	PostgresSSLMode  string `envconfig:"POSTGRES_SSL_MODE" required:"true"`
+	PostgresUser     string `yaml:"postgres_user" envconfig:"POSTGRES_USER"`
+	PostgresPassword string `envconfig:"POSTGRES_PASSWORD"`
+	PostgresDB       string `yaml:"postgres_db" envconfig:"POSTGRES_DB"`
+	PostgresHost     string `yaml:"postgres_host" envconfig:"POSTGRES_HOST"`
+	PostgresPort     string `yaml:"postgres_port" envconfig:"POSTGRES_PORT"`
+	PostgresSSLMode  string `yaml:"postgres_ssl_mode" envconfig:"POSTGRES_SSL_MODE"`
 }
 
 func BuildPostgresDSN(user, pass, host, port, db, sslmode string) string {

@@ -1,4 +1,5 @@
 COVERAGE_FILE ?= coverage.out
+SCHEMA_REGISTRY_URL ?= http://localhost:8081
 
 # Get all directories in cmd/ as available modules
 MODULES := $(notdir $(wildcard cmd/*))
@@ -16,6 +17,7 @@ help:
 	@echo "  \033[36mmake run-all\033[0m - Run bot and scrapper together (Ctrl+C stops both)"
 	@echo "  \033[36mmake compose-db\033[0m - Postgres via Docker Compose (локальная разработка по ДЗ)"
 	@echo "  \033[36mmake compose-migrate\033[0m - Применить SQL-миграции к compose-Postgres (отдельный шаг по ДЗ)"
+	@echo "  \033[36mmake avro-registrate\033[0m - Register Avro schemas in Schema Registry"
 	@echo "  \033[36mmake lint\033[0m - Run golangci-lint"
 
 .PHONY: build
@@ -79,7 +81,7 @@ generate-api:
 
 .PHONY: run-db-migration
 run-db-migration:
-	@go run ./cmd/migrator/main.go
+	@go run ./migrations/migrator/main.go
 
 .PHONY: compose-db
 compose-db:
@@ -92,3 +94,20 @@ compose-migrate:
 .PHONY: run-gorm-models-generation
 run-gorm-models-generation:
 	@go run ./internal/scrapper/infrastructure/db/orm/generate
+
+.PHONY: avro-registrate avro-register
+avro-registrate:
+	@command -v curl >/dev/null 2>&1 || (echo "curl is required" && exit 1)
+	@command -v python3 >/dev/null 2>&1 || (echo "python3 is required" && exit 1)
+	@echo "Registering Avro schemas in Schema Registry: $(SCHEMA_REGISTRY_URL)"
+	@curl -fsS -X POST "$(SCHEMA_REGISTRY_URL)/subjects/link-update-event-value/versions" \
+		-H "Content-Type: application/vnd.schemaregistry.v1+json" \
+		--data "$$(python3 -c 'import json, pathlib; print(json.dumps({"schema": pathlib.Path("schemas/avro/link_update_event.avsc").read_text()}))')"
+	@echo
+	@curl -fsS -X POST "$(SCHEMA_REGISTRY_URL)/subjects/failed-links-event-value/versions" \
+		-H "Content-Type: application/vnd.schemaregistry.v1+json" \
+		--data "$$(python3 -c 'import json, pathlib; print(json.dumps({"schema": pathlib.Path("schemas/avro/failed_links_event.avsc").read_text()}))')"
+	@echo
+	@echo "Avro schemas registered successfully"
+
+avro-register: avro-registrate

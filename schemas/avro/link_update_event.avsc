@@ -1,0 +1,35 @@
+{
+  "type": "record",
+  "name": "LinkUpdateEvent",
+  "namespace": "linktracker.scrapper",
+  "doc": "Link update event for successful processing.",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "Unique event identifier for idempotency and tracing."
+    },
+    {
+      "name": "occurredAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "When the event was created."
+    },
+    {
+      "name": "url",
+      "type": "string",
+      "doc": "Tracked link URL."
+    },
+    {
+      "name": "description",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null,
+      "doc": "Optional update description."
+    }
+  ]
+}
