@@ -17,12 +17,15 @@ type Kafka struct {
 }
 
 type KafkaConsumer struct {
-	ConsumerGroup    string `yaml:"consumer_group" validate:"required"`
-	ConsumerClientID string `yaml:"consumer_client_id" validate:"required"`
+	ConsumerGroup  string `yaml:"consumer_group" validate:"required"`
+	ConsumerClient string `yaml:"consumer_client_id" validate:"required"`
 
 	ReadTimeout    time.Duration `yaml:"read_timeout" validate:"required,gt=0"`
 	CommitInterval time.Duration `yaml:"commit_interval" validate:"required,gte=0"`
 	StartOffset    string        `yaml:"start_offset" validate:"required,oneof=earliest latest"`
+
+	ProcessRetries int           `yaml:"process_retries" validate:"required,gte=1,lte=20"`
+	RetryDelay     time.Duration `yaml:"retry_delay" validate:"required,gt=0"`
 }
 
 type KafkaProducer struct {

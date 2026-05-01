@@ -11,32 +11,34 @@ import (
 	"github.com/google/uuid"
 	"github.com/linkedin/goavro/v2"
 	"github.com/segmentio/kafka-go"
+	kafkago "github.com/segmentio/kafka-go"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
 
 type notifier struct {
-	updateWriter *kafka.Writer
-	failedWriter *kafka.Writer
+	updateWriter *kafkago.Writer
+	failedWriter *kafkago.Writer
 	updateCodec  *goavro.Codec
 	failedCodec  *goavro.Codec
 }
 
 func NewNotifier(kconfig config.Kafka, pconfig config.KafkaProducer) notifier {
+	dialer := &kafkago.Dialer{ClientID: pconfig.ProducerClient}
 	base := kafka.WriterConfig{
 		Brokers:      kconfig.Brokers,
 		WriteTimeout: pconfig.WriteTimeout,
 		RequiredAcks: pconfig.RequiredACK,
 		MaxAttempts:  pconfig.MaxAttempts,
+		Dialer:       dialer,
 	}
 
 	updateCfg, failedCfg := base, base
-	updateCfg.Topic = kconfig.UpadateLinksTopic
-	failedCfg.Topic = kconfig.FailedLinksTopic
+	updateCfg.Topic, failedCfg.Topic = kconfig.UpadateLinksTopic, kconfig.FailedLinksTopic
 
 	return notifier{
-		updateWriter: kafka.NewWriter(updateCfg),
-		failedWriter: kafka.NewWriter(failedCfg),
+		updateWriter: kafkago.NewWriter(updateCfg),
+		failedWriter: kafkago.NewWriter(failedCfg),
 		updateCodec:  mustLoadCodecFromFile("schemas/avro/link_update_event.avsc"),
 		failedCodec:  mustLoadCodecFromFile("schemas/avro/failed_links_event.avsc"),
 	}
@@ -71,7 +73,7 @@ func (p *notifier) Notify(ctx context.Context, chatID int64, link domain.Link, d
 		return fmt.Errorf("kafka-notifier: encode update avro payload: %w", err)
 	}
 
-	err = p.updateWriter.WriteMessages(ctx, kafka.Message{
+	err = p.updateWriter.WriteMessages(ctx, kafkago.Message{
 		Key:   []byte(strconv.FormatInt(chatID, 10)),
 		Value: value,
 	})
@@ -97,7 +99,7 @@ func (p *notifier) NotifyFailedLinks(ctx context.Context, chatID int64, links []
 		return fmt.Errorf("kafka-notifier: encode failed avro payload: %w", err)
 	}
 
-	err = p.failedWriter.WriteMessages(ctx, kafka.Message{
+	err = p.failedWriter.WriteMessages(ctx, kafkago.Message{
 		Key:   []byte(strconv.FormatInt(chatID, 10)),
 		Value: value,
 	})

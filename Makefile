@@ -17,6 +17,15 @@ help:
 	@echo "  \033[36mmake run-all\033[0m - Run bot and scrapper together (Ctrl+C stops both)"
 	@echo "  \033[36mmake compose-db\033[0m - Postgres via Docker Compose (локальная разработка по ДЗ)"
 	@echo "  \033[36mmake compose-migrate\033[0m - Применить SQL-миграции к compose-Postgres (отдельный шаг по ДЗ)"
+	@echo "  \033[36mmake compose-kafka\033[0m - Поднять Kafka KRaft кластер (3 брокера) + Kafka UI + создать топики"
+	@echo "  \033[36mmake compose-kafka-up\033[0m - Только 3 брокера Kafka (без UI и без создания топиков)"
+	@echo "  \033[36mmake compose-kafka-broker BROKER=1\033[0m - Поднять только один брокер (1, 2 или 3)"
+	@echo "  \033[36mmake compose-kafka-init\033[0m - Создать/проверить топики (link-updates, failed-links, link-updates-dlq)"
+	@echo "  \033[36mmake compose-kafka-ui\033[0m - Запустить Kafka UI (http://localhost:8085)"
+	@echo "  \033[36mmake compose-kafka-down\033[0m - Остановить Kafka кластер и UI (volume'ы НЕ удаляются)"
+	@echo "  \033[36mmake compose-kafka-purge\033[0m - Полная очистка кластера: контейнеры + volume'ы (потеря данных)"
+	@echo "  \033[36mmake compose-kafka-logs\033[0m - tail -f логов всех брокеров"
+	@echo "  \033[36mmake compose-kafka-topics\033[0m - Список топиков в кластере"
 	@echo "  \033[36mmake avro-registrate\033[0m - Register Avro schemas in Schema Registry"
 	@echo "  \033[36mmake lint\033[0m - Run golangci-lint"
 
@@ -90,6 +99,56 @@ compose-db:
 .PHONY: compose-migrate
 compose-migrate:
 	@docker compose --profile migrate run --rm migrator
+
+KAFKA_BROKERS := kafka-1 kafka-2 kafka-3
+BROKER ?= 1
+
+.PHONY: compose-kafka
+compose-kafka:
+	@echo "Starting Kafka KRaft cluster (3 brokers) + UI + init topics"
+	@docker compose up -d $(KAFKA_BROKERS) kafka-ui
+	@docker compose run --rm kafka-init
+
+.PHONY: compose-kafka-up
+compose-kafka-up:
+	@echo "Starting Kafka KRaft cluster (3 brokers)"
+	@docker compose up -d $(KAFKA_BROKERS)
+
+.PHONY: compose-kafka-broker
+compose-kafka-broker:
+	@echo "Starting kafka-$(BROKER)"
+	@docker compose up -d kafka-$(BROKER)
+
+.PHONY: compose-kafka-init
+compose-kafka-init:
+	@echo "Creating/ensuring Kafka topics"
+	@docker compose run --rm kafka-init
+
+.PHONY: compose-kafka-ui
+compose-kafka-ui:
+	@echo "Starting Kafka UI on http://localhost:8085"
+	@docker compose up -d kafka-ui
+
+.PHONY: compose-kafka-down
+compose-kafka-down:
+	@echo "Stopping Kafka cluster and UI (volumes preserved)"
+	@docker compose stop $(KAFKA_BROKERS) kafka-ui kafka-init || true
+	@docker compose rm -f $(KAFKA_BROKERS) kafka-ui kafka-init || true
+
+.PHONY: compose-kafka-purge
+compose-kafka-purge:
+	@echo "Purging Kafka cluster (containers + volumes)"
+	@docker compose stop $(KAFKA_BROKERS) kafka-ui kafka-init || true
+	@docker compose rm -f $(KAFKA_BROKERS) kafka-ui kafka-init || true
+	@docker volume rm -f link-tracker_kafka1-data link-tracker_kafka2-data link-tracker_kafka3-data || true
+
+.PHONY: compose-kafka-logs
+compose-kafka-logs:
+	@docker compose logs -f $(KAFKA_BROKERS)
+
+.PHONY: compose-kafka-topics
+compose-kafka-topics:
+	@docker compose exec kafka-1 kafka-topics --bootstrap-server kafka-1:9094 --list
 
 .PHONY: run-gorm-models-generation
 run-gorm-models-generation:

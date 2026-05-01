@@ -81,7 +81,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		notifier,
 		cfg.Batch.Size,
 		cfg.Scheduler.Workers,
-		cfg.SchedulerInterval(),
+		cfg.Scheduler.Interval,
 	)
 	go sch.Run(ctx)
 

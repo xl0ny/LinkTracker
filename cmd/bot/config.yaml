@@ -3,3 +3,25 @@ bot_port: "8081"
 
 logging:
   mode: "INFO" # variants ["INFO", "DEBUG"]
+
+kafka:
+  enabled: true                              # true => бот читает уведомления из Kafka, иначе из HTTP /updates
+  brokers:                                   # три bootstrap-адреса локального KRaft-кластера (см. compose.yaml)
+    - "localhost:19092"
+    - "localhost:29092"
+    - "localhost:39092"
+  links_topic: "link-updates"                # должен совпадать с топиком, в который пишет scrapper
+  failed_links_topic: "failed-links"         # отдельный топик для нотификаций о неудачных проверках ссылок
+  dlq_topic: "link-updates-dlq"              # сюда бот складывает poison pills и сообщения после исчерпания ретраев
+  schema_registry_url: "http://localhost:8081" # для бонусного задания со Schema Registry, в базовом сценарии не используется
+  update_subject: "link-update-event-value"  # subject в SR для LinkUpdateEvent
+  failed_subject: "failed-links-event-value" # subject в SR для LinkUpdateFailedEvent
+
+  consumer:
+    consumer_group: "bot-link-updates"       # group.id; общий для всех инстансов бота, чтобы Kafka делила между ними партиции
+    consumer_client_id: "bot-consumer"       # client.id; видно в Kafka UI и логах брокера, удобно при диагностике
+    read_timeout: "1s"                       # MaxWait у FetchMessage: компромисс между отзывчивостью и пустыми round-trip к брокеру
+    commit_interval: "0s"                    # 0 => коммитим вручную после успешной обработки (at-least-once без потерь)
+    start_offset: "earliest"                 # при первом подключении группы читаем всё с начала; в проде обычно latest
+    process_retries: 3                       # ретраи только для бизнес-ошибок (SendMessage); decode/validation идут в DLQ сразу
+    retry_delay: "500ms"                     # пауза между попытками SendMessage; защищает Telegram от мгновенных повторов

@@ -20,6 +20,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/telegram"
 	bothttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/kafka"
 )
 
 const workerCount = 5
@@ -38,6 +39,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("app run: Link tracker creation error - %w", err)
 	}
+
+	kafkaConsumer := kafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, bot)
+	kafkaConsumer.Run(ctx)
+	defer kafkaConsumer.Close()
 
 	stateStore := application.NewTrackStateStore()
 	trackCmd := command.NewTrack(tracker, stateStore)
