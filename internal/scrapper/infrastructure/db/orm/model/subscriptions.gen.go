@@ -12,11 +12,10 @@ const TableNameSubscription = "subscriptions"
 
 // Subscription mapped from table <subscriptions>
 type Subscription struct {
-	ID            int64     `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
-	ChatID        int64     `gorm:"column:chat_id;not null" json:"chat_id"`
-	LinkID        int64     `gorm:"column:link_id;not null" json:"link_id"`
-	LastUpdatedAt time.Time `gorm:"column:last_updated_at" json:"last_updated_at"`
-	CreatedAt     time.Time `gorm:"column:created_at;not null;default:now()" json:"created_at"`
+	ID        int64     `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
+	ChatID    int64     `gorm:"column:chat_id;not null" json:"chat_id"`
+	LinkID    int64     `gorm:"column:link_id;not null" json:"link_id"`
+	CreatedAt time.Time `gorm:"column:created_at;not null;default:now()" json:"created_at"`
 }
 
 // TableName Subscription's table name

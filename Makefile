@@ -84,7 +84,7 @@ generate-mocks:
 
 .PHONY: run-db-migration
 run-db-migration:
-	@go run ./cmd/migrator/main.go
+	@go run ./migrations/migrator
 
 .PHONY: compose-db
 compose-db:

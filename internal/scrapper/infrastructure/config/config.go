@@ -41,12 +41,11 @@ func (m *AccessMode) Decode(value string) error {
 }
 
 type Config struct {
-	DB               commondb.Config `yaml:"db"`
-	PostgresPassword string          `yaml:"-" envconfig:"POSTGRES_PASSWORD" required:"true"`
-	BotURL           string          `envconfig:"APP_BOT_URL"`
-	Port             string          `envconfig:"APP_SCRAPPER_PORT"`
-	AccessType       AccessMode      `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
-	Logging          struct {
+	commondb.Config `yaml:",inline"`
+	BotURL          string     `envconfig:"APP_BOT_URL"`
+	Port            string     `envconfig:"APP_SCRAPPER_PORT"`
+	AccessType      AccessMode `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
+	Logging         struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 }
@@ -57,12 +56,12 @@ func (c *Config) GetLevel() slog.Level {
 
 func (c *Config) PostgresDSN() string {
 	return commondb.BuildPostgresDSN(
-		c.DB.User,
+		c.DB.PostgresUser,
 		c.PostgresPassword,
-		c.DB.Host,
-		c.DB.Port,
-		c.DB.Database,
-		c.DB.SSLMode,
+		c.DB.PostgresHost,
+		c.DB.PostgresPort,
+		c.DB.PostgresDB,
+		c.DB.PostgresSSLMode,
 	)
 }
 

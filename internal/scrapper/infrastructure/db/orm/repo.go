@@ -205,10 +205,18 @@ func (r *Repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, link
 		}
 		return fmt.Errorf("orm repo: UpdateLinkUpdatedAt load link (%w)", err)
 	}
-	info, err := q.Subscription.WithContext(ctx).
+	if _, err := q.Subscription.WithContext(ctx).
 		Where(q.Subscription.ChatID.Eq(chat.ID)).
 		Where(q.Subscription.LinkID.Eq(lnk.ID)).
-		Update(q.Subscription.LastUpdatedAt, t)
+		First(); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.ErrLinkNotFound
+		}
+		return fmt.Errorf("orm repo: UpdateLinkUpdatedAt load subscription (%w)", err)
+	}
+	info, err := q.Link.WithContext(ctx).
+		Where(q.Link.ID.Eq(lnk.ID)).
+		Update(q.Link.LastUpdatedAt, t)
 	if err != nil {
 		return fmt.Errorf("orm repo: UpdateLinkUpdatedAt (%w)", err)
 	}
@@ -295,8 +303,8 @@ func (r *Repository) domainLinkForSubscription(ctx context.Context, sub *model.S
 		return domain.Link{}, err
 	}
 	dl := domain.Link{URL: lnk.URL, Tags: tags, Filters: filters}
-	if !sub.LastUpdatedAt.IsZero() {
-		dl.LastUpdated = sub.LastUpdatedAt
+	if !lnk.LastUpdatedAt.IsZero() {
+		dl.LastUpdated = lnk.LastUpdatedAt
 	}
 	return dl, nil
 }
@@ -352,8 +360,8 @@ func (r *Repository) domainLinkForSubscriptionInTx(ctx context.Context, tx *gorm
 		return domain.Link{}, err
 	}
 	dl := domain.Link{URL: lnk.URL, Tags: tags, Filters: filters}
-	if !sub.LastUpdatedAt.IsZero() {
-		dl.LastUpdated = sub.LastUpdatedAt
+	if !lnk.LastUpdatedAt.IsZero() {
+		dl.LastUpdated = lnk.LastUpdatedAt
 	}
 	return dl, nil
 }

@@ -127,7 +127,7 @@ func (r *Repository) AddLink(ctx context.Context, chatID int64, link string, tag
 
 func (r *Repository) GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error) {
 	const q = `
-SELECT l.url, s.last_updated_at,
+SELECT l.url, l.last_updated_at,
 	COALESCE((
 		SELECT array_agg(t.value ORDER BY t.value)
 		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
@@ -179,7 +179,7 @@ ORDER BY s.id`
 
 func (r *Repository) ListSubscriptions(ctx context.Context, limit, offset int) ([]domain.Subscription, error) {
 	q := `
-SELECT c.telegram_id, l.url, s.last_updated_at,
+SELECT c.telegram_id, l.url, l.last_updated_at,
 	COALESCE((
 		SELECT array_agg(t.value ORDER BY t.value)
 		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
@@ -234,7 +234,7 @@ func (r *Repository) DeleteLink(ctx context.Context, chatID int64, linkURL strin
 	defer rollbackUnlessCommitted(ctx, tx)
 
 	const sel = `
-SELECT s.id, l.url, s.last_updated_at,
+SELECT s.id, l.url, l.last_updated_at,
 	COALESCE((
 		SELECT array_agg(t.value ORDER BY t.value)
 		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
@@ -275,11 +275,15 @@ JOIN links l ON l.id = s.link_id AND l.url = $2`
 
 func (r *Repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error {
 	cmdTag, err := r.pool.Exec(ctx, `
-		UPDATE subscriptions s
+		UPDATE links l
 		SET last_updated_at = $3
-		FROM (SELECT id FROM chats WHERE telegram_id = $1) c
-		JOIN links l ON l.url = $2
-		WHERE s.chat_id = c.id AND s.link_id = l.id`, chatID, linkURL, t)
+		WHERE l.url = $2
+			AND EXISTS (
+				SELECT 1
+				FROM subscriptions s
+				JOIN chats c ON c.id = s.chat_id
+				WHERE s.link_id = l.id AND c.telegram_id = $1
+			)`, chatID, linkURL, t)
 	if err != nil {
 		return fmt.Errorf("repo: UpdateLinkUpdatedAt (%w)", err)
 	}

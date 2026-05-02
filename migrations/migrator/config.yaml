@@ -1,3 +1,10 @@
+db:
+  postgres_user: postgres
+  postgres_db: linktracker
+  postgres_host: localhost
+  postgres_port: "5432"
+  postgres_ssl_mode: disable
+
 migrations:
   dir: "./migrations"
-  target_version: 1 # 1 for 0001_*.sql etc
+  target_version: 2 # 1 for 0001_*.sql, 2 for 0002_*.sql, etc
