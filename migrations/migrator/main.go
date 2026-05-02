@@ -11,7 +11,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
+	commondb "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
 )
 
 func main() {
@@ -19,13 +19,13 @@ func main() {
 }
 
 func run() int {
-	config, err := db.GetConfig()
+	config, err := loadConfig()
 	if err != nil {
 		log.Println("migrator: config loading failed:", err)
 		return 1
 	}
 
-	dsn := db.BuildPostgresDSN(
+	dsn := commondb.BuildPostgresDSN(
 		config.DB.PostgresUser,
 		config.PostgresPassword,
 		config.DB.PostgresHost,
@@ -54,7 +54,7 @@ func run() int {
 		}
 	}()
 
-	if migErr := runMigration(m, config.Migrations.Direction, config.Migrations.Steps); migErr != nil && !errors.Is(migErr, migrate.ErrNoChange) {
+	if migErr := migrateToTarget(m, resolveTargetVersion(config.Migrations.TargetVersion)); migErr != nil && !errors.Is(migErr, migrate.ErrNoChange) {
 		log.Println("migration failed:", migErr)
 		return 1
 	}
@@ -62,31 +62,31 @@ func run() int {
 	return 0
 }
 
-func runMigration(m *migrate.Migrate, dir string, steps int) error {
-	switch dir {
-	case "up":
-		if steps > 0 {
-			if err := m.Steps(steps); err != nil {
-				return fmt.Errorf("migrate steps up: %w", err)
-			}
-			return nil
-		}
+func resolveTargetVersion(v *int) int {
+	if v == nil {
+		return -1
+	}
+	return *v
+}
+
+func migrateToTarget(m *migrate.Migrate, target int) error {
+	switch {
+	case target < -1:
+		return fmt.Errorf("migrations: target_version must be >= -1 (-1=all up, 0=all down, N>=1=exact version)")
+	case target == -1:
 		if err := m.Up(); err != nil {
 			return fmt.Errorf("migrate up: %w", err)
 		}
 		return nil
-	case "down":
-		if steps > 0 {
-			if err := m.Steps(-steps); err != nil {
-				return fmt.Errorf("migrate steps down: %w", err)
-			}
-			return nil
-		}
+	case target == 0:
 		if err := m.Down(); err != nil {
 			return fmt.Errorf("migrate down: %w", err)
 		}
 		return nil
 	default:
-		return fmt.Errorf("unknown direction: %s", dir)
+		if err := m.Migrate(uint(target)); err != nil {
+			return fmt.Errorf("migrate to version %d: %w", target, err)
+		}
+		return nil
 	}
 }

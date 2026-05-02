@@ -125,8 +125,8 @@ func (r *Repository) AddLink(ctx context.Context, chatID int64, link string, tag
 	return nil
 }
 
-func (r *Repository) GetLinks(ctx context.Context, chatID int64, limit, offset int) ([]domain.Link, error) {
-	q := `
+func (r *Repository) GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error) {
+	const q = `
 SELECT l.url, s.last_updated_at,
 	COALESCE((
 		SELECT array_agg(t.value ORDER BY t.value)
@@ -138,18 +138,12 @@ SELECT l.url, s.last_updated_at,
 		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
 		WHERE lf.subscription_id = s.id
 	), ARRAY[]::text[])
-FROM chats c
+FROM (SELECT id FROM chats WHERE telegram_id = $1) c
 JOIN subscriptions s ON s.chat_id = c.id
 JOIN links l ON l.id = s.link_id
-WHERE c.telegram_id = $1
 ORDER BY s.id`
-	args := []any{chatID}
-	if limit > 0 {
-		q += ` LIMIT $2 OFFSET $3`
-		args = append(args, limit, offset)
-	}
 
-	rows, err := r.pool.Query(ctx, q, args...)
+	rows, err := r.pool.Query(ctx, q, chatID)
 	if err != nil {
 		return nil, fmt.Errorf("repo: GetLinks - query (%w)", err)
 	}
@@ -183,7 +177,7 @@ ORDER BY s.id`
 	return out, nil
 }
 
-func (r *Repository) GetChats(ctx context.Context, limit, offset int) (map[int64]domain.Chat, error) {
+func (r *Repository) ListSubscriptions(ctx context.Context, limit, offset int) ([]domain.Subscription, error) {
 	q := `
 SELECT c.telegram_id, l.url, s.last_updated_at,
 	COALESCE((
@@ -196,67 +190,38 @@ SELECT c.telegram_id, l.url, s.last_updated_at,
 		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
 		WHERE lf.subscription_id = s.id
 	), ARRAY[]::text[])
-FROM chats c
-LEFT JOIN subscriptions s ON s.chat_id = c.id
-LEFT JOIN links l ON l.id = s.link_id AND s.id IS NOT NULL`
+FROM subscriptions s
+JOIN chats c ON c.id = s.chat_id
+JOIN links l ON l.id = s.link_id
+ORDER BY s.id`
 	args := []any{}
 	if limit > 0 {
-		q = `
-WITH paged AS (
-	SELECT id FROM chats ORDER BY telegram_id LIMIT $1 OFFSET $2
-)
-SELECT c.telegram_id, l.url, s.last_updated_at,
-	COALESCE((
-		SELECT array_agg(t.value ORDER BY t.value)
-		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
-		WHERE lt.subscription_id = s.id
-	), ARRAY[]::text[]),
-	COALESCE((
-		SELECT array_agg(f.value ORDER BY f.value)
-		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
-		WHERE lf.subscription_id = s.id
-	), ARRAY[]::text[])
-FROM paged p
-JOIN chats c ON c.id = p.id
-LEFT JOIN subscriptions s ON s.chat_id = c.id
-LEFT JOIN links l ON l.id = s.link_id AND s.id IS NOT NULL`
+		q += ` LIMIT $1 OFFSET $2`
 		args = append(args, limit, offset)
 	}
-	q += `
-ORDER BY c.telegram_id, s.id`
 
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("repo: GetChats - query (%w)", err)
+		return nil, fmt.Errorf("repo: ListSubscriptions - query (%w)", err)
 	}
 	defer rows.Close()
 
-	chats := make(map[int64]*domain.Chat)
+	var out []domain.Subscription
 	for rows.Next() {
 		var tgID int64
-		var url *string
+		var url string
 		var lastUp *time.Time
 		var tags, filters []string
 		if scanErr := rows.Scan(&tgID, &url, &lastUp, &tags, &filters); scanErr != nil {
-			return nil, fmt.Errorf("repo: GetChats - scan (%w)", scanErr)
+			return nil, fmt.Errorf("repo: ListSubscriptions - scan (%w)", scanErr)
 		}
-		ch, ok := chats[tgID]
-		if !ok {
-			id := tgID
-			ch = &domain.Chat{ID: &id, Links: nil}
-			chats[tgID] = ch
-		}
-		if url != nil {
-			ch.Links = append(ch.Links, rowToDomainLink(*url, lastUp, tags, filters))
-		}
+		out = append(out, domain.Subscription{
+			ChatID: tgID,
+			Link:   rowToDomainLink(url, lastUp, tags, filters),
+		})
 	}
 	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, fmt.Errorf("repo: GetChats - rows (%w)", rowsErr)
-	}
-
-	out := make(map[int64]domain.Chat, len(chats))
-	for id, ch := range chats {
-		out[id] = *ch
+		return nil, fmt.Errorf("repo: ListSubscriptions - rows (%w)", rowsErr)
 	}
 	return out, nil
 }
@@ -280,10 +245,9 @@ SELECT s.id, l.url, s.last_updated_at,
 		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
 		WHERE lf.subscription_id = s.id
 	), ARRAY[]::text[])
-FROM chats c
+FROM (SELECT id FROM chats WHERE telegram_id = $1) c
 JOIN subscriptions s ON s.chat_id = c.id
-JOIN links l ON l.id = s.link_id
-WHERE c.telegram_id = $1 AND l.url = $2`
+JOIN links l ON l.id = s.link_id AND l.url = $2`
 
 	var subID int64
 	var url string
@@ -313,9 +277,9 @@ func (r *Repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, link
 	cmdTag, err := r.pool.Exec(ctx, `
 		UPDATE subscriptions s
 		SET last_updated_at = $3
-		FROM chats c, links l
-		WHERE s.chat_id = c.id AND s.link_id = l.id
-			AND c.telegram_id = $1 AND l.url = $2`, chatID, linkURL, t)
+		FROM (SELECT id FROM chats WHERE telegram_id = $1) c
+		JOIN links l ON l.url = $2
+		WHERE s.chat_id = c.id AND s.link_id = l.id`, chatID, linkURL, t)
 	if err != nil {
 		return fmt.Errorf("repo: UpdateLinkUpdatedAt (%w)", err)
 	}

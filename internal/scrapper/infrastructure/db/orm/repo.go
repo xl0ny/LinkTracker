@@ -82,7 +82,7 @@ func (r *Repository) AddLink(ctx context.Context, chatID int64, link string, tag
 	return nil
 }
 
-func (r *Repository) GetLinks(ctx context.Context, chatID int64, limit, offset int) ([]domain.Link, error) {
+func (r *Repository) GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error) {
 	q := query.Use(r.db)
 	chat, err := q.Chat.WithContext(ctx).Where(q.Chat.TelegramID.Eq(chatID)).First()
 	if err != nil {
@@ -92,11 +92,10 @@ func (r *Repository) GetLinks(ctx context.Context, chatID int64, limit, offset i
 		return nil, fmt.Errorf("orm repo: GetLinks load chat (%w)", err)
 	}
 
-	b := q.Subscription.WithContext(ctx).Where(q.Subscription.ChatID.Eq(chat.ID)).Order(q.Subscription.ID)
-	if limit > 0 {
-		b = b.Limit(limit).Offset(offset)
-	}
-	subs, err := b.Find()
+	subs, err := q.Subscription.WithContext(ctx).
+		Where(q.Subscription.ChatID.Eq(chat.ID)).
+		Order(q.Subscription.ID).
+		Find()
 	if err != nil {
 		return nil, fmt.Errorf("orm repo: GetLinks subscriptions (%w)", err)
 	}
@@ -114,33 +113,30 @@ func (r *Repository) GetLinks(ctx context.Context, chatID int64, limit, offset i
 	return out, nil
 }
 
-func (r *Repository) GetChats(ctx context.Context, limit, offset int) (map[int64]domain.Chat, error) {
+func (r *Repository) ListSubscriptions(ctx context.Context, limit, offset int) ([]domain.Subscription, error) {
 	q := query.Use(r.db)
-	chatB := q.Chat.WithContext(ctx).Order(q.Chat.TelegramID)
+	b := q.Subscription.WithContext(ctx).Order(q.Subscription.ID)
 	if limit > 0 {
-		chatB = chatB.Limit(limit).Offset(offset)
+		b = b.Limit(limit).Offset(offset)
 	}
-	chats, err := chatB.Find()
+	subs, err := b.Find()
 	if err != nil {
-		return nil, fmt.Errorf("orm repo: GetChats list chats (%w)", err)
+		return nil, fmt.Errorf("orm repo: ListSubscriptions (%w)", err)
 	}
-	out := make(map[int64]domain.Chat, len(chats))
-	for _, c := range chats {
-		tgID := c.TelegramID
-		ch := domain.Chat{ID: &tgID, Links: nil}
-		b := q.Subscription.WithContext(ctx).Where(q.Subscription.ChatID.Eq(c.ID)).Order(q.Subscription.ID)
-		subs, sErr := b.Find()
-		if sErr != nil {
-			return nil, fmt.Errorf("orm repo: GetChats subscriptions (%w)", sErr)
+	if len(subs) == 0 {
+		return nil, nil
+	}
+	out := make([]domain.Subscription, 0, len(subs))
+	for _, sub := range subs {
+		chat, cErr := q.Chat.WithContext(ctx).Where(q.Chat.ID.Eq(sub.ChatID)).First()
+		if cErr != nil {
+			return nil, fmt.Errorf("orm repo: ListSubscriptions load chat (%w)", cErr)
 		}
-		for _, sub := range subs {
-			dl, bErr := r.domainLinkForSubscription(ctx, sub)
-			if bErr != nil {
-				return nil, bErr
-			}
-			ch.Links = append(ch.Links, dl)
+		dl, dErr := r.domainLinkForSubscription(ctx, sub)
+		if dErr != nil {
+			return nil, dErr
 		}
-		out[c.TelegramID] = ch
+		out = append(out, domain.Subscription{ChatID: chat.TelegramID, Link: dl})
 	}
 	return out, nil
 }

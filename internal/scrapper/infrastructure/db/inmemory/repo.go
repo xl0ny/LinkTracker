@@ -3,6 +3,7 @@ package inmemory
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
@@ -62,12 +63,27 @@ func (r *repository) AddLink(_ context.Context, chatID int64, link string, tags,
 	return nil
 }
 
-func (r *repository) GetLinks(_ context.Context, chatID int64, limit, offset int) ([]domain.Link, error) {
+func (r *repository) GetLinks(_ context.Context, chatID int64) ([]domain.Link, error) {
 	chat, ok := r.Chats[chatID]
 	if !ok {
 		return nil, errors.New("chat not found")
 	}
-	all := toDomainLinks(chat.Links)
+	return toDomainLinks(chat.Links), nil
+}
+
+func (r *repository) ListSubscriptions(_ context.Context, limit, offset int) ([]domain.Subscription, error) {
+	chatIDs := make([]int64, 0, len(r.Chats))
+	for id := range r.Chats {
+		chatIDs = append(chatIDs, id)
+	}
+	sort.Slice(chatIDs, func(i, j int) bool { return chatIDs[i] < chatIDs[j] })
+
+	all := make([]domain.Subscription, 0)
+	for _, id := range chatIDs {
+		for _, l := range r.Chats[id].Links {
+			all = append(all, domain.Subscription{ChatID: id, Link: toDomainLink(l)})
+		}
+	}
 	if limit <= 0 {
 		return all, nil
 	}
@@ -79,17 +95,6 @@ func (r *repository) GetLinks(_ context.Context, chatID int64, limit, offset int
 		end = len(all)
 	}
 	return all[offset:end], nil
-}
-
-func (r *repository) GetChats(_ context.Context, _, _ int) (map[int64]domain.Chat, error) {
-	chats := make(map[int64]domain.Chat)
-	for id, chat := range r.Chats {
-		chats[id] = domain.Chat{
-			ID:    chat.ID,
-			Links: toDomainLinks(chat.Links),
-		}
-	}
-	return chats, nil
 }
 
 func (r *repository) Close() {}

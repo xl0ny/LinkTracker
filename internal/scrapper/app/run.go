@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
@@ -84,25 +83,25 @@ func Run(ctx context.Context, cfg *config.Config) error {
 }
 
 func newChatRepository(ctx context.Context, cfg *config.Config) (application.ChatRepository, error) {
-	mode := strings.ToUpper(strings.TrimSpace(cfg.AccessType))
+	mode := cfg.AccessType
 	if mode == "" {
-		mode = "SQL"
+		mode = config.AccessSQL
 	}
 	dsn := cfg.PostgresDSN()
 	switch mode {
-	case "SQL":
+	case config.AccessSQL:
 		repo, sqlErr := pgrepo.NewRepository(ctx, dsn)
 		if sqlErr != nil {
 			return nil, fmt.Errorf("scrapper: pgrepo repository: %w", sqlErr)
 		}
 		return repo, nil
-	case "ORM":
+	case config.AccessORM:
 		repo, ormErr := orm.NewRepository(ctx, dsn)
 		if ormErr != nil {
 			return nil, fmt.Errorf("scrapper: orm repository: %w", ormErr)
 		}
 		return repo, nil
 	default:
-		return nil, fmt.Errorf("scrapper: unknown access_type %q (use SQL or ORM)", cfg.AccessType)
+		return nil, fmt.Errorf("scrapper: invalid access_type %q (use SQL or ORM)", mode)
 	}
 }

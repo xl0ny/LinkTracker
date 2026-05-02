@@ -88,18 +88,23 @@ func startPostgres(t *testing.T) (ctx context.Context, dsn string, terminate fun
 
 func waitPostgresReady(t *testing.T, ctx context.Context, dsn string) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	const (
+		maxAttempts   = 20
+		retryInterval = time.Second
+	)
 	var last error
-	for time.Now().Before(deadline) {
+	for i := 0; i < maxAttempts; i++ {
 		p, err := pgxpool.New(ctx, dsn)
 		if err == nil {
 			p.Close()
 			return
 		}
 		last = err
-		time.Sleep(150 * time.Millisecond)
+		if i < maxAttempts-1 {
+			time.Sleep(retryInterval)
+		}
 	}
-	require.NoError(t, last, "postgres did not accept connections")
+	require.NoError(t, last, "postgres did not accept connections after %d attempts", maxAttempts)
 }
 
 func TestMigrationsUpOnCleanDB(t *testing.T) {
@@ -160,7 +165,7 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 	require.NoError(t, repo.AddLink(ctx, chatID, link, &tags, &filters))
 	require.ErrorIs(t, repo.AddLink(ctx, chatID, link, nil, nil), domain.ErrLinkAlreadyExists)
 
-	links, err := repo.GetLinks(ctx, chatID, 0, 0)
+	links, err := repo.GetLinks(ctx, chatID)
 	require.NoError(t, err)
 	require.Len(t, links, 1)
 	require.Equal(t, link, links[0].URL)
@@ -168,21 +173,23 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 	require.Equal(t, []string{"issue"}, links[0].Filters)
 
 	require.NoError(t, repo.AddLink(ctx, chatID, "https://example.com/second", nil, nil))
-	one, err := repo.GetLinks(ctx, chatID, 1, 0)
+	allLinks, err := repo.GetLinks(ctx, chatID)
 	require.NoError(t, err)
-	require.Len(t, one, 1)
-	two, err := repo.GetLinks(ctx, chatID, 1, 1)
-	require.NoError(t, err)
-	require.Len(t, two, 1)
-	require.NotEqual(t, one[0].URL, two[0].URL)
+	require.Len(t, allLinks, 2)
 
-	chatsAll, err := repo.GetChats(ctx, 0, 0)
+	subsAll, err := repo.ListSubscriptions(ctx, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, chatsAll, chatID)
-
-	chatsPage, err := repo.GetChats(ctx, 10, 0)
+	require.Len(t, subsAll, 2)
+	for _, s := range subsAll {
+		require.Equal(t, chatID, s.ChatID)
+	}
+	subsPage1, err := repo.ListSubscriptions(ctx, 1, 0)
 	require.NoError(t, err)
-	require.Contains(t, chatsPage, chatID)
+	require.Len(t, subsPage1, 1)
+	subsPage2, err := repo.ListSubscriptions(ctx, 1, 1)
+	require.NoError(t, err)
+	require.Len(t, subsPage2, 1)
+	require.NotEqual(t, subsPage1[0].Link.URL, subsPage2[0].Link.URL)
 
 	removed, err := repo.DeleteLink(ctx, chatID, "https://example.com/second")
 	require.NoError(t, err)
@@ -190,7 +197,7 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 
 	ts := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
 	require.NoError(t, repo.UpdateLinkUpdatedAt(ctx, chatID, link, ts))
-	after, err := repo.GetLinks(ctx, chatID, 0, 0)
+	after, err := repo.GetLinks(ctx, chatID)
 	require.NoError(t, err)
 	require.Len(t, after, 1)
 	require.True(t, after[0].LastUpdated.Equal(ts))
@@ -219,6 +226,6 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 
 	require.NoError(t, repo.DeleteChat(ctx, chatID))
 	require.ErrorIs(t, repo.DeleteChat(ctx, chatID), domain.ErrChatNotFound)
-	_, err = repo.GetLinks(ctx, chatID, 0, 0)
+	_, err = repo.GetLinks(ctx, chatID)
 	require.ErrorIs(t, err, domain.ErrChatNotFound)
 }

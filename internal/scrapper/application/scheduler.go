@@ -9,6 +9,8 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
 
+const subscriptionsPageSize = 100
+
 type linkChecker interface {
 	Check(ctx context.Context, link domain.Link) (changed bool, latest time.Time, err error)
 }
@@ -40,43 +42,44 @@ func (s *Scheduler) Run(ctx context.Context) {
 }
 
 func (s *Scheduler) checkAllLinks(ctx context.Context) {
-	chats, err := s.repo.GetChats(ctx, 0, 0)
-	if err != nil {
-		slog.Error("scheduler: get chats error", slog.String("error", err.Error()))
+	slog.Info("scheduler: check all links start", slog.Int("page_size", subscriptionsPageSize))
+	var processed int
+	for offset := 0; ; offset += subscriptionsPageSize {
+		subs, err := s.repo.ListSubscriptions(ctx, subscriptionsPageSize, offset)
+		if err != nil {
+			slog.Error("scheduler: list subscriptions error", slog.Int("offset", offset), slog.String("error", err.Error()))
+			return
+		}
+		if len(subs) == 0 {
+			break
+		}
+		for _, sub := range subs {
+			s.processSubscription(ctx, sub)
+		}
+		processed += len(subs)
+		if len(subs) < subscriptionsPageSize {
+			break
+		}
+	}
+	slog.Info("scheduler: check all links done", slog.Int("processed", processed))
+}
+
+func (s *Scheduler) processSubscription(ctx context.Context, sub domain.Subscription) {
+	changed, latest, errCheck := s.linkChecker.Check(ctx, sub.Link)
+	if errCheck != nil {
+		slog.Warn("scheduler: check link error", slog.String("url", sub.Link.URL), slog.String("error", errCheck.Error()))
 		return
 	}
-	var totalLinks int
-	for _, chat := range chats {
-		if chat.ID == nil {
-			continue
-		}
-		totalLinks += len(chat.Links)
+	if !changed {
+		return
 	}
-	slog.Info("scheduler: check all links start", slog.Int("chats", len(chats)), slog.Int("links", totalLinks))
-
-	for _, chat := range chats {
-		if chat.ID == nil {
-			continue
-		}
-		chatID := *chat.ID
-		for _, link := range chat.Links {
-			changed, latest, errCheck := s.linkChecker.Check(ctx, link)
-			if errCheck != nil {
-				slog.Warn("scheduler: check link error", slog.String("url", link.URL), slog.String("error", errCheck.Error()))
-				continue
-			}
-			if changed {
-				slog.Info("scheduler: link changed, notifying", slog.Int64("chat_id", chatID), slog.String("url", link.URL))
-				if errNotify := s.botNotifier.Notify(ctx, chatID, link); errNotify != nil {
-					slog.Warn("scheduler: notify error", slog.Int64("chat_id", chatID), slog.String("url", link.URL), slog.String("error", errNotify.Error()))
-				} else {
-					slog.Info("scheduler: notify ok", slog.Int64("chat_id", chatID))
-				}
-				err = s.repo.UpdateLinkUpdatedAt(ctx, chatID, link.URL, latest)
-				if err != nil {
-					slog.Warn("scheduler: db new link date updation failed", slog.String("error", err.Error()))
-				}
-			}
-		}
+	slog.Info("scheduler: link changed, notifying", slog.Int64("chat_id", sub.ChatID), slog.String("url", sub.Link.URL))
+	if errNotify := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link); errNotify != nil {
+		slog.Warn("scheduler: notify error", slog.Int64("chat_id", sub.ChatID), slog.String("url", sub.Link.URL), slog.String("error", errNotify.Error()))
+	} else {
+		slog.Info("scheduler: notify ok", slog.Int64("chat_id", sub.ChatID))
+	}
+	if err := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, latest); err != nil {
+		slog.Warn("scheduler: db new link date updation failed", slog.String("error", err.Error()))
 	}
 }

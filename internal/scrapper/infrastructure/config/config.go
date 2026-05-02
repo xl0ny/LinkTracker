@@ -15,12 +15,38 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
 )
 
+type AccessMode string
+
+const (
+	AccessSQL AccessMode = "SQL"
+	AccessORM AccessMode = "ORM"
+)
+
+func (m *AccessMode) Decode(value string) error {
+	v := strings.ToUpper(strings.TrimSpace(value))
+	if v == "" {
+		*m = AccessSQL
+		return nil
+	}
+	switch v {
+	case string(AccessSQL):
+		*m = AccessSQL
+		return nil
+	case string(AccessORM):
+		*m = AccessORM
+		return nil
+	default:
+		return fmt.Errorf("unknown access_type %q (use SQL or ORM)", value)
+	}
+}
+
 type Config struct {
-	commondb.Config `yaml:",inline"`
-	BotURL          string `envconfig:"APP_BOT_URL"`
-	Port            string `envconfig:"APP_SCRAPPER_PORT"`
-	AccessType      string `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
-	Logging         struct {
+	DB               commondb.Config `yaml:"db"`
+	PostgresPassword string          `yaml:"-" envconfig:"POSTGRES_PASSWORD" required:"true"`
+	BotURL           string          `envconfig:"APP_BOT_URL"`
+	Port             string          `envconfig:"APP_SCRAPPER_PORT"`
+	AccessType       AccessMode      `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
+	Logging          struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 }
@@ -31,12 +57,12 @@ func (c *Config) GetLevel() slog.Level {
 
 func (c *Config) PostgresDSN() string {
 	return commondb.BuildPostgresDSN(
-		c.DB.PostgresUser,
+		c.DB.User,
 		c.PostgresPassword,
-		c.DB.PostgresHost,
-		c.DB.PostgresPort,
-		c.DB.PostgresDB,
-		c.DB.PostgresSSLMode,
+		c.DB.Host,
+		c.DB.Port,
+		c.DB.Database,
+		c.DB.SSLMode,
 	)
 }
 
@@ -68,6 +94,15 @@ func Load() (*Config, error) {
 	if c.Port == "" {
 		c.Port = "8080"
 		slog.Info("scrapper config: APP_SCRAPPER_PORT default", slog.String("port", c.Port))
+	}
+	rawAccess := string(c.AccessType)
+	var access AccessMode
+	if err := access.Decode(rawAccess); err != nil {
+		return nil, fmt.Errorf("config: access_type: %w", err)
+	}
+	c.AccessType = access
+	if rawAccess == "" {
+		slog.Info("scrapper config: access_type default", slog.String("access_type", string(c.AccessType)))
 	}
 	return &c, nil
 }
