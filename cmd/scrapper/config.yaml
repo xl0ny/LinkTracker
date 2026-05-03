@@ -1,5 +1,7 @@
 access_type: "SQL" # SQL | ORM
 
+bot_url: "http://localhost:8081"
+
 db:
   postgres_user: postgres
   postgres_db: linktracker

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -25,7 +26,7 @@ type Config struct {
 func loadConfig() (*Config, error) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
-		return nil, fmt.Errorf("migrator: runtime.Caller failed")
+		return nil, errors.New("migrator: runtime.Caller failed")
 	}
 	cfgPath := filepath.Join(filepath.Dir(thisFile), "config.yaml")
 	data, err := os.ReadFile(cfgPath)

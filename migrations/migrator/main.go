@@ -72,7 +72,7 @@ func resolveTargetVersion(v *int) int {
 func migrateToTarget(m *migrate.Migrate, target int) error {
 	switch {
 	case target < -1:
-		return fmt.Errorf("migrations: target_version must be >= -1 (-1=all up, 0=all down, N>=1=exact version)")
+		return errors.New("migrations: target_version must be >= -1 (-1=all up, 0=all down, N>=1=exact version)")
 	case target == -1:
 		if err := m.Up(); err != nil {
 			return fmt.Errorf("migrate up: %w", err)

@@ -205,7 +205,7 @@ func (r *Repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, link
 		}
 		return fmt.Errorf("orm repo: UpdateLinkUpdatedAt load link (%w)", err)
 	}
-	if _, err := q.Subscription.WithContext(ctx).
+	if _, err = q.Subscription.WithContext(ctx).
 		Where(q.Subscription.ChatID.Eq(chat.ID)).
 		Where(q.Subscription.LinkID.Eq(lnk.ID)).
 		First(); err != nil {

@@ -42,7 +42,7 @@ func (m *AccessMode) Decode(value string) error {
 
 type Config struct {
 	commondb.Config `yaml:",inline"`
-	BotURL          string     `envconfig:"APP_BOT_URL"`
+	BotURL          string     `yaml:"bot_url"`
 	Port            string     `envconfig:"APP_SCRAPPER_PORT"`
 	AccessType      AccessMode `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
 	Logging         struct {
@@ -96,7 +96,7 @@ func Load() (*Config, error) {
 	}
 	rawAccess := string(c.AccessType)
 	var access AccessMode
-	if err := access.Decode(rawAccess); err != nil {
+	if err = access.Decode(rawAccess); err != nil {
 		return nil, fmt.Errorf("config: access_type: %w", err)
 	}
 	c.AccessType = access
