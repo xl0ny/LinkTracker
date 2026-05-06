@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -34,7 +35,7 @@ func GetConfig() (*DB, error) {
 		config.PostgresHost == "" ||
 		config.PostgresPort == "" ||
 		config.PostgresSSLMode == "" {
-		return nil, fmt.Errorf("migrator: invalid config: postgres fields must be set via yaml or env")
+		return nil, errors.New("migrator: invalid config: postgres fields must be set via yaml or env")
 	}
 	return &config, nil
 }

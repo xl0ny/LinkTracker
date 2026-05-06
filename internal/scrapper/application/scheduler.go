@@ -16,7 +16,7 @@ type linkChecker interface {
 	Check(ctx context.Context, link domain.Link) (domain.LinkCheckOutcome, error)
 }
 
-type botNotifier interface {
+type BotNotifier interface {
 	Notify(ctx context.Context, chatID int64, link domain.Link, description string) error
 	NotifyFailedLinks(ctx context.Context, chatID int64, links []string) error
 }
@@ -26,10 +26,15 @@ type SchedulerLinks interface {
 	UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error
 }
 
+type TxRunner interface {
+	WithTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 type Scheduler struct {
 	repo        SchedulerLinks
 	linkChecker linkChecker
-	botNotifier botNotifier
+	botNotifier BotNotifier
+	txRunner    TxRunner
 	batchSize   int
 	workers     int
 	interval    time.Duration
@@ -45,7 +50,7 @@ type Scheduler struct {
 func NewScheduler(
 	repo SchedulerLinks,
 	lc linkChecker,
-	bn botNotifier,
+	bn BotNotifier,
 	batchSize, workers int,
 	interval time.Duration,
 ) *Scheduler {
@@ -66,6 +71,10 @@ func NewScheduler(
 		workers:     workers,
 		interval:    interval,
 	}
+}
+
+func (s *Scheduler) SetTxRunner(t TxRunner) {
+	s.txRunner = t
 }
 
 func (s *Scheduler) Run(ctx context.Context) {
@@ -108,6 +117,9 @@ func (s *Scheduler) processLink(ctx context.Context, sub domain.SubscribedLink) 
 	if err != nil {
 		return fmt.Errorf("check link: %w", err)
 	}
+	if len(out.Updates) > 0 {
+		return s.notifyUpdatesAndCommit(ctx, sub, out.Updates, out.Latest)
+	}
 	if sub.Link.LastUpdated.IsZero() && !out.Latest.IsZero() {
 		if upErr := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, out.Latest); upErr != nil {
 			return fmt.Errorf("update link date: %w", upErr)
@@ -117,11 +129,45 @@ func (s *Scheduler) processLink(ctx context.Context, sub domain.SubscribedLink) 
 	if !out.Changed {
 		return nil
 	}
-	if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, out.Description); nfErr != nil {
-		return fmt.Errorf("notify update: %w", nfErr)
+	return s.notifyAndCommit(ctx, sub, out.Description, out.Latest)
+}
+
+func (s *Scheduler) notifyUpdatesAndCommit(ctx context.Context, sub domain.SubscribedLink, updates []domain.LinkCheckUpdate, latest time.Time) error {
+	work := func(ctx context.Context) error {
+		for _, u := range updates {
+			if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, u.Description); nfErr != nil {
+				return fmt.Errorf("notify update: %w", nfErr)
+			}
+		}
+		if upErr := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, latest); upErr != nil {
+			return fmt.Errorf("update link date: %w", upErr)
+		}
+		return nil
 	}
-	if upErr := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, out.Latest); upErr != nil {
-		return fmt.Errorf("update link date: %w", upErr)
+	if s.txRunner == nil {
+		return work(ctx)
+	}
+	if err := s.txRunner.WithTx(ctx, work); err != nil {
+		return fmt.Errorf("scheduler: with tx: %w", err)
+	}
+	return nil
+}
+
+func (s *Scheduler) notifyAndCommit(ctx context.Context, sub domain.SubscribedLink, description string, latest time.Time) error {
+	work := func(ctx context.Context) error {
+		if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, description); nfErr != nil {
+			return fmt.Errorf("notify update: %w", nfErr)
+		}
+		if upErr := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, latest); upErr != nil {
+			return fmt.Errorf("update link date: %w", upErr)
+		}
+		return nil
+	}
+	if s.txRunner == nil {
+		return work(ctx)
+	}
+	if err := s.txRunner.WithTx(ctx, work); err != nil {
+		return fmt.Errorf("scheduler: with tx: %w", err)
 	}
 	return nil
 }

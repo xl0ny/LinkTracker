@@ -42,10 +42,65 @@ func TestCheckLink_RepoNewIssue(t *testing.T) {
 	out, err := c.CheckLink(context.Background(), "https://github.com/o/r", since)
 	require.NoError(t, err)
 	require.True(t, out.Changed)
-	require.Contains(t, out.Description, "Новая задача")
-	require.Contains(t, out.Description, "devuser")
-	require.Contains(t, out.Description, "Issue")
-	require.Contains(t, out.Description, "Превью:")
+	require.Len(t, out.Updates, 1)
+	desc := out.Updates[0].Description
+	require.Contains(t, desc, "Новая задача")
+	require.Contains(t, desc, "devuser")
+	require.Contains(t, desc, "Issue")
+	require.Contains(t, desc, "Превью:")
+}
+
+func TestCheckLink_RepoMultipleNewIssues(t *testing.T) {
+	since := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/o/r", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"updated_at": "2025-06-01T00:00:00Z",
+			"pushed_at":  "2025-06-01T00:00:00Z",
+		})
+	})
+	mux.HandleFunc("/repos/o/r/issues", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		iss := []map[string]any{
+			{
+				"html_url":   "https://github.com/o/r/issues/2",
+				"title":      "Second",
+				"body":       "b2",
+				"user":       map[string]string{"login": "u2"},
+				"created_at": "2026-02-03T12:00:00Z",
+				"updated_at": "2026-02-03T12:00:00Z",
+			},
+			{
+				"html_url":   "https://github.com/o/r/issues/1",
+				"title":      "First",
+				"body":       "b1",
+				"user":       map[string]string{"login": "u1"},
+				"created_at": "2026-02-01T12:00:00Z",
+				"updated_at": "2026-02-01T12:00:00Z",
+			},
+			{
+				"html_url":   "https://github.com/o/r/issues/3",
+				"title":      "Third",
+				"body":       "b3",
+				"user":       map[string]string{"login": "u3"},
+				"created_at": "2026-02-02T12:00:00Z",
+				"updated_at": "2026-02-02T12:00:00Z",
+			},
+		}
+		_ = json.NewEncoder(w).Encode(iss)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
+	out, err := c.CheckLink(context.Background(), "https://github.com/o/r", since)
+	require.NoError(t, err)
+	require.True(t, out.Changed)
+	require.Len(t, out.Updates, 3)
+	require.Contains(t, out.Updates[0].Description, "First")
+	require.Contains(t, out.Updates[1].Description, "Third")
+	require.Contains(t, out.Updates[2].Description, "Second")
 }
 
 func TestCheckLink_RepoBaselineNoNotify(t *testing.T) {
@@ -114,9 +169,10 @@ func TestCheckLink_PreviewTruncationInMessage(t *testing.T) {
 	out, err := c.CheckLink(context.Background(), "https://github.com/x/y", since)
 	require.NoError(t, err)
 	require.True(t, out.Changed)
-	idx := strings.Index(out.Description, "Превью: ")
+	require.Len(t, out.Updates, 1)
+	idx := strings.Index(out.Updates[0].Description, "Превью: ")
 	require.GreaterOrEqual(t, idx, 0)
-	rest := out.Description[idx+len("Превью: "):]
+	rest := out.Updates[0].Description[idx+len("Превью: "):]
 	previewLine := strings.SplitN(rest, "\n", 2)[0]
 	require.True(t, strings.HasSuffix(previewLine, "…"))
 	require.LessOrEqual(t, utf8.RuneCountInString(previewLine), 201)

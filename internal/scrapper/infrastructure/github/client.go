@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -167,33 +168,33 @@ func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (dom
 		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
 	}
 
-	var newest *issueItem
+	var updates []domain.LinkCheckUpdate
 	for i := range list {
 		it := &list[i]
 		if !it.CreatedAt.After(since) {
 			continue
 		}
-		if newest == nil || it.CreatedAt.After(newest.CreatedAt) {
-			newest = it
+		kind := "Issue"
+		link := it.HTMLURL
+		if it.PullRequest != nil {
+			kind = "PR"
+			if it.PullRequest.HTMLURL != "" {
+				link = it.PullRequest.HTMLURL
+			}
 		}
+		desc := formatGitHubUpdate(kind, it.Title, it.User.Login, it.CreatedAt, it.Body, link)
+		updates = append(updates, domain.LinkCheckUpdate{Description: desc, At: it.CreatedAt})
 	}
-	if newest == nil {
+	if len(updates) == 0 {
 		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
 	}
-
-	kind := "Issue"
-	link := newest.HTMLURL
-	if newest.PullRequest != nil {
-		kind = "PR"
-		if newest.PullRequest.HTMLURL != "" {
-			link = newest.PullRequest.HTMLURL
-		}
-	}
-	desc := formatGitHubUpdate(kind, newest.Title, newest.User.Login, newest.CreatedAt, newest.Body, link)
+	sort.Slice(updates, func(i, j int) bool {
+		return updates[i].At.Before(updates[j].At)
+	})
 	return domain.LinkCheckOutcome{
-		Changed:     true,
-		Latest:      newest.CreatedAt,
-		Description: desc,
+		Changed: true,
+		Latest:  watermark,
+		Updates: updates,
 	}, nil
 }
 

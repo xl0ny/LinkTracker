@@ -15,10 +15,11 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/config"
+	botredis "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/redis"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/scrapperclient"
 	botswagger "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/swagger"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/telegram"
-	bothttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
+	transporthttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/kafka"
 )
@@ -40,9 +41,11 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("app run: Link tracker creation error - %w", err)
 	}
 
-	kafkaConsumer := kafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, bot)
-	kafkaConsumer.Run(ctx)
-	defer kafkaConsumer.Close()
+	kafkaCleanup, kafkaErr := attachKafkaConsumer(ctx, cfg, bot)
+	if kafkaErr != nil {
+		return kafkaErr
+	}
+	defer kafkaCleanup()
 
 	stateStore := application.NewTrackStateStore()
 	trackCmd := command.NewTrack(tracker, stateStore)
@@ -56,21 +59,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		go application.Worker(actions, dispatcher, bot)
 	}
 
-	r := chi.NewRouter()
-	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/x-yaml")
-		if _, werr := w.Write(botopenapi.ContractYAML); werr != nil {
-			slog.Error("swagger yaml write error", slog.String("error", werr.Error()), slog.String("event", "swagger"))
-		}
-	})
-	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if _, werr := w.Write([]byte(botswagger.SwaggerHTML)); werr != nil {
-			slog.Error("swagger html write error", slog.String("error", werr.Error()), slog.String("event", "swagger"))
-		}
-	})
-	updatesHandler := bothttp.NewHandler(bot)
-	botapi.HandlerFromMux(updatesHandler, r)
+	r := newBotHTTPRouter(bot)
 
 	var lc net.ListenConfig
 	ln, errListen := lc.Listen(ctx, "tcp", ":"+cfg.BotPort)
@@ -98,4 +87,73 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	slog.Info("run: shutting down")
 	return nil
+}
+
+// attachKafkaConsumer starts the Kafka consumer when enabled; Redis is wired for idempotency when configured.
+func attachKafkaConsumer(ctx context.Context, cfg *config.Config, sender kafka.MessageSender) (cleanup func(), err error) {
+	cleanup = func() {}
+	if !cfg.Kafka.Kafka.Enabled {
+		return cleanup, nil
+	}
+
+	var idem kafka.IdempotencyStore
+	if cfg.Redis.Enabled {
+		redisStore := botredis.New(botredis.Config{
+			Addr:      cfg.Redis.Addr,
+			Password:  cfg.Redis.Password,
+			DB:        cfg.Redis.DB,
+			KeyPrefix: cfg.Redis.KeyPrefix,
+			TTL:       cfg.Redis.TTL,
+		})
+		if perr := redisStore.Ping(ctx); perr != nil {
+			return nil, fmt.Errorf("bot run: redis ping: %w", perr)
+		}
+		prev := cleanup
+		cleanup = func() {
+			prev()
+			if cerr := redisStore.Close(); cerr != nil {
+				slog.Error("redis close error", slog.String("error", cerr.Error()), slog.String("event", "redis"))
+			}
+		}
+		idem = redisStore
+	}
+
+	kafkaConsumer, kerr := kafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, sender, idem)
+	if kerr != nil {
+		cleanup()
+		return nil, fmt.Errorf("bot run: kafka consumer: %w", kerr)
+	}
+	prev := cleanup
+	cleanup = func() {
+		prev()
+		if cerr := kafkaConsumer.Close(); cerr != nil {
+			slog.Error("kafka consumer close error", slog.String("error", cerr.Error()), slog.String("event", "kafka"))
+		}
+	}
+
+	go func() {
+		if rerr := kafkaConsumer.Run(ctx); rerr != nil {
+			slog.Error("kafka consumer running error", slog.String("error", rerr.Error()), slog.String("event", "kafka"))
+		}
+	}()
+
+	return cleanup, nil
+}
+
+func newBotHTTPRouter(sender transporthttp.MessageSender) http.Handler {
+	r := chi.NewRouter()
+	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/x-yaml")
+		if _, werr := w.Write(botopenapi.ContractYAML); werr != nil {
+			slog.Error("swagger yaml write error", slog.String("error", werr.Error()), slog.String("event", "swagger"))
+		}
+	})
+	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if _, werr := w.Write([]byte(botswagger.SwaggerHTML)); werr != nil {
+			slog.Error("swagger html write error", slog.String("error", werr.Error()), slog.String("event", "swagger"))
+		}
+	})
+	botapi.HandlerFromMux(transporthttp.NewHandler(sender), r)
+	return r
 }

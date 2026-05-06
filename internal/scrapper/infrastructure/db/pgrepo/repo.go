@@ -354,7 +354,7 @@ WHERE c.telegram_id = $1 AND l.url = $2`
 }
 
 func (r *Repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error {
-	cmdTag, err := r.pool.Exec(ctx, `
+	cmdTag, err := r.executor(ctx).Exec(ctx, `
 		UPDATE subscriptions s
 		SET last_updated_at = $3
 		FROM chats c, links l

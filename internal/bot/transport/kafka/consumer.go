@@ -6,23 +6,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/linkedin/goavro/v2"
 	kafkago "github.com/segmentio/kafka-go"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/avro/registry"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
-)
-
-const (
-	updateSchemaPath = "schemas/avro/link_update_event.avsc"
-	failedSchemaPath = "schemas/avro/failed_links_event.avsc"
 )
 
 type MessageSender interface {
 	SendMessage(chatID int64, message string) error
+}
+
+type IdempotencyStore interface {
+	Acquire(ctx context.Context, eventID string) (bool, error)
 }
 
 type Consumer struct {
@@ -30,15 +28,20 @@ type Consumer struct {
 	failedReader *kafkago.Reader
 	dlqWriter    *kafkago.Writer
 
-	updateCodec *goavro.Codec
-	failedCodec *goavro.Codec
+	sr *registry.Client
 
 	sender     MessageSender
+	idempotent IdempotencyStore
 	maxRetries int
 	retryDelay time.Duration
 }
 
-func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, sender MessageSender) *Consumer {
+const topicReaderGoroutines = 2
+
+func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, sender MessageSender, idem IdempotencyStore) (*Consumer, error) {
+	if kconfig.SchemaRegistryURL == "" {
+		return nil, errors.New("kafka-consumer: schema_registry_url required")
+	}
 	startOffset := kafkago.LastOffset
 	if cconfig.StartOffset == "earliest" {
 		startOffset = kafkago.FirstOffset
@@ -73,12 +76,12 @@ func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, sender Mess
 		updateReader: kafkago.NewReader(updateCfg),
 		failedReader: kafkago.NewReader(failedCfg),
 		dlqWriter:    dlqWriter,
-		updateCodec:  mustLoadCodecFromFile(updateSchemaPath),
-		failedCodec:  mustLoadCodecFromFile(failedSchemaPath),
+		sr:           registry.NewClient(kconfig.SchemaRegistryURL),
 		sender:       sender,
+		idempotent:   idem,
 		maxRetries:   cconfig.ProcessRetries,
 		retryDelay:   cconfig.RetryDelay,
-	}
+	}, nil
 }
 
 func (c *Consumer) Close() error {
@@ -103,16 +106,16 @@ func (c *Consumer) Close() error {
 
 func (c *Consumer) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
-	errCh := make(chan error, 2)
+	errCh := make(chan error, topicReaderGoroutines)
 
-	wg.Add(2)
+	wg.Add(topicReaderGoroutines)
 	go func() {
 		defer wg.Done()
-		errCh <- c.consumeLoop(ctx, c.updateReader, c.processUpdate)
+		errCh <- c.consumeTopic(ctx, c.updateReader, c.decodeUpdate, c.deliverUpdate)
 	}()
 	go func() {
 		defer wg.Done()
-		errCh <- c.consumeLoop(ctx, c.failedReader, c.processFailed)
+		errCh <- c.consumeTopic(ctx, c.failedReader, c.decodeFailed, c.deliverFailed)
 	}()
 
 	wg.Wait()
@@ -126,11 +129,11 @@ func (c *Consumer) Run(ctx context.Context) error {
 	return nil
 }
 
-func (c *Consumer) consumeLoop(
-	ctx context.Context,
-	reader *kafkago.Reader,
-	handler func(context.Context, kafkago.Message) error,
-) error {
+type decodeFunc func(ctx context.Context, msg kafkago.Message) (chatID int64, record map[string]any, err error)
+type deliverFunc func(ctx context.Context, chatID int64, record map[string]any) error
+
+// consumeTopic: decode/validation errors go to DLQ once (no retries). Business errors (idempotency, SendMessage) are retried.
+func (c *Consumer) consumeTopic(ctx context.Context, reader *kafkago.Reader, decode decodeFunc, deliver deliverFunc) error {
 	for {
 		msg, err := reader.FetchMessage(ctx)
 		if err != nil {
@@ -140,7 +143,15 @@ func (c *Consumer) consumeLoop(
 			return wrapConsumerError("fetch message", err)
 		}
 
-		processErr := c.processWithRetry(ctx, msg, handler)
+		var processErr error
+		chatID, record, decErr := decode(ctx, msg)
+		if decErr != nil {
+			processErr = decErr
+		} else {
+			processErr = c.retryBusiness(ctx, func(ctx context.Context) error {
+				return deliver(ctx, chatID, record)
+			})
+		}
 		if processErr != nil {
 			if dlqErr := c.writeToDLQ(ctx, msg, processErr); dlqErr != nil {
 				return dlqErr
@@ -153,21 +164,17 @@ func (c *Consumer) consumeLoop(
 	}
 }
 
-func (c *Consumer) processWithRetry(
-	ctx context.Context,
-	msg kafkago.Message,
-	handler func(context.Context, kafkago.Message) error,
-) error {
+func (c *Consumer) retryBusiness(ctx context.Context, fn func(context.Context) error) error {
 	var lastErr error
 	for attempt := 1; attempt <= c.maxRetries; attempt++ {
-		if err := handler(ctx, msg); err != nil {
+		if err := fn(ctx); err != nil {
 			lastErr = err
 			if attempt == c.maxRetries {
 				break
 			}
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return wrapConsumerError("retry cancelled", ctx.Err())
 			case <-time.After(c.retryDelay):
 			}
 			continue
@@ -177,60 +184,102 @@ func (c *Consumer) processWithRetry(
 	return lastErr
 }
 
-func (c *Consumer) processUpdate(ctx context.Context, msg kafkago.Message) error {
+func (c *Consumer) decodeMessageRecord(ctx context.Context, msg kafkago.Message, parseKeyOp, nativeStage string) (int64, map[string]any, error) {
 	chatID, err := parseChatID(msg.Key)
 	if err != nil {
-		return wrapConsumerError("parse update key", err)
+		return 0, nil, wrapConsumerError(parseKeyOp, err)
 	}
 
-	native, _, err := c.updateCodec.NativeFromBinary(msg.Value)
+	schemaID, datum, err := registry.DecodeConfluent(msg.Value)
 	if err != nil {
-		return wrapConsumerError("decode update avro", err)
+		return 0, nil, wrapConsumerError("decode confluent wire", err)
+	}
+
+	codec, err := c.sr.CodecForID(ctx, schemaID)
+	if err != nil {
+		return 0, nil, wrapConsumerError("schema registry codec", err)
+	}
+
+	native, _, err := codec.NativeFromBinary(datum)
+	if err != nil {
+		return 0, nil, wrapConsumerError(nativeStage, err)
 	}
 
 	record, ok := native.(map[string]any)
 	if !ok {
-		return wrapConsumerError("decode update avro", fmt.Errorf("unexpected native type %T", native))
+		return 0, nil, wrapConsumerError(nativeStage, fmt.Errorf("unexpected native type %T", native))
+	}
+
+	return chatID, record, nil
+}
+
+func (c *Consumer) decodeUpdate(ctx context.Context, msg kafkago.Message) (int64, map[string]any, error) {
+	chatID, record, err := c.decodeMessageRecord(ctx, msg, "parse update key", "decode update avro")
+	if err != nil {
+		return 0, nil, err
 	}
 
 	description := extractOptionalString(record["description"])
 	if description == "" {
-		return wrapConsumerError("validate update payload", errors.New("empty description"))
+		return 0, nil, wrapConsumerError("validate update payload", errors.New("empty description"))
 	}
 
-	if err = c.sender.SendMessage(chatID, description); err != nil {
-		return wrapConsumerError("send update message", err)
-	}
-
-	return nil
+	return chatID, record, nil
 }
 
-func (c *Consumer) processFailed(ctx context.Context, msg kafkago.Message) error {
-	chatID, err := parseChatID(msg.Key)
+func (c *Consumer) decodeFailed(ctx context.Context, msg kafkago.Message) (int64, map[string]any, error) {
+	chatID, record, err := c.decodeMessageRecord(ctx, msg, "parse failed key", "decode failed avro")
 	if err != nil {
-		return wrapConsumerError("parse failed key", err)
-	}
-
-	native, _, err := c.failedCodec.NativeFromBinary(msg.Value)
-	if err != nil {
-		return wrapConsumerError("decode failed avro", err)
-	}
-
-	record, ok := native.(map[string]any)
-	if !ok {
-		return wrapConsumerError("decode failed avro", fmt.Errorf("unexpected native type %T", native))
+		return 0, nil, err
 	}
 
 	description := extractString(record["description"])
 	if description == "" {
-		return wrapConsumerError("validate failed payload", errors.New("empty description"))
+		return 0, nil, wrapConsumerError("validate failed payload", errors.New("empty description"))
 	}
 
+	return chatID, record, nil
+}
+
+func (c *Consumer) deliverUpdate(ctx context.Context, chatID int64, record map[string]any) error {
+	first, err := c.acquireEvent(ctx, record)
+	if err != nil {
+		return wrapConsumerError("idempotency check", err)
+	}
+	if !first {
+		return nil
+	}
+	description := extractOptionalString(record["description"])
+	if err = c.sender.SendMessage(chatID, description); err != nil {
+		return wrapConsumerError("send update message", err)
+	}
+	return nil
+}
+
+func (c *Consumer) deliverFailed(ctx context.Context, chatID int64, record map[string]any) error {
+	first, err := c.acquireEvent(ctx, record)
+	if err != nil {
+		return wrapConsumerError("idempotency check", err)
+	}
+	if !first {
+		return nil
+	}
+	description := extractString(record["description"])
 	if err = c.sender.SendMessage(chatID, description); err != nil {
 		return wrapConsumerError("send failed message", err)
 	}
-
 	return nil
+}
+
+func (c *Consumer) acquireEvent(ctx context.Context, record map[string]any) (bool, error) {
+	if c.idempotent == nil {
+		return true, nil
+	}
+	first, err := c.idempotent.Acquire(ctx, extractString(record["eventId"]))
+	if err != nil {
+		return false, fmt.Errorf("idempotent acquire: %w", err)
+	}
+	return first, nil
 }
 
 func (c *Consumer) writeToDLQ(ctx context.Context, msg kafkago.Message, processErr error) error {
@@ -269,25 +318,13 @@ func wrapConsumerError(operation string, err error) error {
 	return fmt.Errorf("kafka-consumer: %s: %w", operation, err)
 }
 
-func mustLoadCodecFromFile(path string) *goavro.Codec {
-	schema, err := os.ReadFile(path)
-	if err != nil {
-		panic(fmt.Errorf("kafka-consumer: read avro schema %q: %w", path, err))
-	}
-	codec, err := goavro.NewCodec(string(schema))
-	if err != nil {
-		panic(fmt.Errorf("kafka-consumer: build avro codec from %q: %w", path, err))
-	}
-	return codec
-}
-
 func parseChatID(raw []byte) (int64, error) {
 	if len(raw) == 0 {
-		return 0, fmt.Errorf("empty kafka key")
+		return 0, errors.New("empty kafka key")
 	}
 	chatID, err := strconv.ParseInt(string(raw), 10, 64)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("parse chat id from key: %w", err)
 	}
 	return chatID, nil
 }

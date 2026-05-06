@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
@@ -28,6 +29,15 @@ type Config struct {
 			config.KafkaConsumer `yaml:",inline"`
 		} `yaml:"consumer"`
 	} `yaml:"kafka"`
+
+	Redis struct {
+		Enabled   bool          `yaml:"enabled"`
+		Addr      string        `yaml:"addr"`
+		Password  string        `envconfig:"REDIS_PASSWORD"`
+		DB        int           `yaml:"db"`
+		KeyPrefix string        `yaml:"key_prefix"`
+		TTL       time.Duration `yaml:"ttl"`
+	} `yaml:"redis"`
 }
 
 func (c *Config) GetLevel() slog.Level {

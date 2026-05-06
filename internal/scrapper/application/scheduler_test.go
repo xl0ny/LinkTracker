@@ -168,7 +168,6 @@ func TestScheduler_Run_ProcessesTasks(t *testing.T) {
 	}
 	notifier := &schedulerNotifierStub{}
 
-	// Длинный интервал: за время теста срабатывает только первый produce (без второго тика gocron).
 	s := NewScheduler(repo, checker, notifier, 100, 2, 24*time.Hour)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

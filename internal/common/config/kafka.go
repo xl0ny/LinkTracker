@@ -29,9 +29,20 @@ type KafkaConsumer struct {
 }
 
 type KafkaProducer struct {
+	Mode string `yaml:"mode" validate:"required,oneof=direct outbox"`
+
 	ProducerClient string `yaml:"producer_client"`
 
 	WriteTimeout time.Duration `yaml:"write_timeout" validate:"required,gt=0"`
 	RequiredACK  int           `yaml:"required_ack" validate:"required,oneof=-1 1 0"`
 	MaxAttempts  int           `yaml:"max_attempts" validate:"required,gte=1,lte=20"`
+}
+
+type KafkaOutbox struct {
+	BatchSize    int           `yaml:"batch_size" validate:"required,gte=1"`
+	PollInterval time.Duration `yaml:"poll_interval" validate:"required,gt=0"`
+	LockFor      time.Duration `yaml:"lock_for" validate:"required,gt=0"`
+	MaxAttempts  int           `yaml:"max_attempts" validate:"required,gte=1"`
+	BaseBackoff  time.Duration `yaml:"base_backoff" validate:"required,gt=0"`
+	MaxBackoff   time.Duration `yaml:"max_backoff" validate:"required,gt=0"`
 }

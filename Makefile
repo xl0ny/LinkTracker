@@ -1,5 +1,5 @@
 COVERAGE_FILE ?= coverage.out
-SCHEMA_REGISTRY_URL ?= http://localhost:8081
+SCHEMA_REGISTRY_URL ?= http://localhost:18081
 
 # Get all directories in cmd/ as available modules
 MODULES := $(notdir $(wildcard cmd/*))
@@ -17,7 +17,7 @@ help:
 	@echo "  \033[36mmake run-all\033[0m - Run bot and scrapper together (Ctrl+C stops both)"
 	@echo "  \033[36mmake compose-db\033[0m - Postgres via Docker Compose (локальная разработка по ДЗ)"
 	@echo "  \033[36mmake compose-migrate\033[0m - Применить SQL-миграции к compose-Postgres (отдельный шаг по ДЗ)"
-	@echo "  \033[36mmake compose-kafka\033[0m - Поднять Kafka KRaft кластер (3 брокера) + Kafka UI + создать топики"
+	@echo "  \033[36mmake compose-kafka\033[0m - Kafka KRaft (3 брокера) + Kafka UI + Schema Registry + создать топики"
 	@echo "  \033[36mmake compose-kafka-up\033[0m - Только 3 брокера Kafka (без UI и без создания топиков)"
 	@echo "  \033[36mmake compose-kafka-broker BROKER=1\033[0m - Поднять только один брокер (1, 2 или 3)"
 	@echo "  \033[36mmake compose-kafka-init\033[0m - Создать/проверить топики (link-updates, failed-links, link-updates-dlq)"
@@ -55,12 +55,33 @@ test:
 
 .PHONY: test-integration
 test-integration:
-	@go test -tags=integration -count=1 -v ./internal/scrapper/infrastructure/db/...
+	@go test -tags=integration -count=1 -v ./internal/scrapper/infrastructure/db/... ./internal/bot/transport/kafka/...
 
 .PHONY: lint
 lint:
 	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || (echo "golangci-lint v2 not found. Run: go install github.com/golangci/golangci-lint/v2@latest" && exit 1)
 	@$(GOLANGCI_LINT) run -c .golangci.yml --timeout=5m
+
+
+.PHONY: god
+god:
+	@echo "\033[36mgod:\033[0m Postgres..."
+	@$(MAKE) compose-db
+	@echo "\033[36mgod:\033[0m migrations..."
+	@$(MAKE) compose-migrate
+	@echo "\033[36mgod:\033[0m Redis..."
+	@docker compose up -d redis
+	@echo "\033[36mgod:\033[0m Kafka + Schema Registry + topics"
+	@$(MAKE) compose-kafka
+	@echo "\033[36mgod:\033[0m ждём Schema Registry ($(SCHEMA_REGISTRY_URL))..."
+	@i=0; until curl -fsS "$(SCHEMA_REGISTRY_URL)/subjects" >/dev/null 2>&1; do \
+		i=$$((i+1)); test $$i -le 120 || (echo "god: schema-registry недоступен, выход" && exit 1); \
+		sleep 1; \
+	done
+	@echo "\033[36mgod:\033[0m Avro в Schema Registry..."
+	@$(MAKE) avro-registrate
+	@echo "\033[36mgod:\033[0m бот + скраппер"
+	@$(MAKE) run-all
 
 .PHONY: run-bot
 run-bot:
@@ -106,7 +127,7 @@ BROKER ?= 1
 .PHONY: compose-kafka
 compose-kafka:
 	@echo "Starting Kafka KRaft cluster (3 brokers) + UI + init topics"
-	@docker compose up -d $(KAFKA_BROKERS) kafka-ui
+	@docker compose up -d $(KAFKA_BROKERS) kafka-ui schema-registry
 	@docker compose run --rm kafka-init
 
 .PHONY: compose-kafka-up
@@ -132,14 +153,14 @@ compose-kafka-ui:
 .PHONY: compose-kafka-down
 compose-kafka-down:
 	@echo "Stopping Kafka cluster and UI (volumes preserved)"
-	@docker compose stop $(KAFKA_BROKERS) kafka-ui kafka-init || true
-	@docker compose rm -f $(KAFKA_BROKERS) kafka-ui kafka-init || true
+	@docker compose stop $(KAFKA_BROKERS) kafka-ui schema-registry kafka-init || true
+	@docker compose rm -f $(KAFKA_BROKERS) kafka-ui schema-registry kafka-init || true
 
 .PHONY: compose-kafka-purge
 compose-kafka-purge:
 	@echo "Purging Kafka cluster (containers + volumes)"
-	@docker compose stop $(KAFKA_BROKERS) kafka-ui kafka-init || true
-	@docker compose rm -f $(KAFKA_BROKERS) kafka-ui kafka-init || true
+	@docker compose stop $(KAFKA_BROKERS) kafka-ui schema-registry kafka-init || true
+	@docker compose rm -f $(KAFKA_BROKERS) kafka-ui schema-registry kafka-init || true
 	@docker volume rm -f link-tracker_kafka1-data link-tracker_kafka2-data link-tracker_kafka3-data || true
 
 .PHONY: compose-kafka-logs

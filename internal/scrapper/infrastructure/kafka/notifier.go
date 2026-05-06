@@ -2,30 +2,46 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/linkedin/goavro/v2"
-	"github.com/segmentio/kafka-go"
 	kafkago "github.com/segmentio/kafka-go"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/avro/registry"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
 
-type notifier struct {
+const (
+	UpdateAvroSchemaPath = "schemas/avro/link_update_event.avsc"
+	FailedAvroSchemaPath = "schemas/avro/failed_links_event.avsc"
+)
+
+// Notifier sends link events directly to Kafka (non-outbox producer mode).
+type Notifier struct {
 	updateWriter *kafkago.Writer
 	failedWriter *kafkago.Writer
-	updateCodec  *goavro.Codec
-	failedCodec  *goavro.Codec
+	enc          *registry.Encoder
 }
 
-func NewNotifier(kconfig config.Kafka, pconfig config.KafkaProducer) notifier {
+func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.KafkaProducer) (*Notifier, error) {
+	if kconfig.SchemaRegistryURL == "" {
+		return nil, errors.New("kafka-notifier: schema_registry_url required")
+	}
+	if kconfig.UpdateSubject == "" || kconfig.FailedSubject == "" {
+		return nil, errors.New("kafka-notifier: update_subject and failed_subject required")
+	}
+	enc, err := registry.NewEncoder(ctx, kconfig.SchemaRegistryURL, kconfig.UpdateSubject, kconfig.FailedSubject,
+		UpdateAvroSchemaPath, FailedAvroSchemaPath)
+	if err != nil {
+		return nil, fmt.Errorf("kafka-notifier: schema registry encoder: %w", err)
+	}
+
 	dialer := &kafkago.Dialer{ClientID: pconfig.ProducerClient}
-	base := kafka.WriterConfig{
+	base := kafkago.WriterConfig{
 		Brokers:      kconfig.Brokers,
 		WriteTimeout: pconfig.WriteTimeout,
 		RequiredAcks: pconfig.RequiredACK,
@@ -36,28 +52,15 @@ func NewNotifier(kconfig config.Kafka, pconfig config.KafkaProducer) notifier {
 	updateCfg, failedCfg := base, base
 	updateCfg.Topic, failedCfg.Topic = kconfig.UpadateLinksTopic, kconfig.FailedLinksTopic
 
-	return notifier{
+	return &Notifier{
 		updateWriter: kafkago.NewWriter(updateCfg),
 		failedWriter: kafkago.NewWriter(failedCfg),
-		updateCodec:  mustLoadCodecFromFile("schemas/avro/link_update_event.avsc"),
-		failedCodec:  mustLoadCodecFromFile("schemas/avro/failed_links_event.avsc"),
-	}
+		enc:          enc,
+	}, nil
 }
 
-func mustLoadCodecFromFile(path string) *goavro.Codec {
-	schema, err := os.ReadFile(path)
-	if err != nil {
-		panic(fmt.Errorf("kafka-notifier: read avro schema %q: %w", path, err))
-	}
-	codec, err := goavro.NewCodec(string(schema))
-	if err != nil {
-		panic(fmt.Errorf("kafka-notifier: build avro codec from %q: %w", path, err))
-	}
-	return codec
-}
-
-func (p *notifier) Notify(ctx context.Context, chatID int64, link domain.Link, description string) error {
-	var descriptionValue any = nil
+func (p *Notifier) Notify(ctx context.Context, chatID int64, link domain.Link, description string) error {
+	var descriptionValue any
 	if description != "" {
 		descriptionValue = map[string]any{"string": description}
 	}
@@ -68,9 +71,9 @@ func (p *notifier) Notify(ctx context.Context, chatID int64, link domain.Link, d
 		"url":         link.URL,
 		"description": descriptionValue,
 	}
-	value, err := p.updateCodec.BinaryFromNative(nil, native)
+	value, err := p.enc.EncodeUpdate(native)
 	if err != nil {
-		return fmt.Errorf("kafka-notifier: encode update avro payload: %w", err)
+		return fmt.Errorf("kafka-notifier: encode update payload: %w", err)
 	}
 
 	err = p.updateWriter.WriteMessages(ctx, kafkago.Message{
@@ -83,7 +86,7 @@ func (p *notifier) Notify(ctx context.Context, chatID int64, link domain.Link, d
 	return nil
 }
 
-func (p *notifier) NotifyFailedLinks(ctx context.Context, chatID int64, links []string) error {
+func (p *Notifier) NotifyFailedLinks(ctx context.Context, chatID int64, links []string) error {
 	if len(links) == 0 {
 		return nil
 	}
@@ -94,7 +97,7 @@ func (p *notifier) NotifyFailedLinks(ctx context.Context, chatID int64, links []
 		"occurredAt":  time.Now().UTC().UnixMilli(),
 		"description": description,
 	}
-	value, err := p.failedCodec.BinaryFromNative(nil, native)
+	value, err := p.enc.EncodeFailed(native)
 	if err != nil {
 		return fmt.Errorf("kafka-notifier: encode failed avro payload: %w", err)
 	}

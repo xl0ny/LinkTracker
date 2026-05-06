@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,8 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/orm"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/pgrepo"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/github"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/kafka"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/outbox"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/stackoverflow"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/swagger"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/api"
@@ -71,10 +74,15 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("bot client init: %w", err)
 	}
-	notifier := botclient.NewNotifier(botAPI)
 	gh := github.NewClient(nil, os.Getenv("GITHUB_TOKEN"))
 	so := stackoverflow.NewClient(nil)
 	lc := checker.New(gh, so)
+
+	notifier, publisher, npErr := buildNotifier(ctx, repo, botAPI, cfg)
+	if npErr != nil {
+		return npErr
+	}
+
 	sch := application.NewScheduler(
 		repo,
 		lc,
@@ -83,6 +91,17 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		cfg.Scheduler.Workers,
 		cfg.Scheduler.Interval,
 	)
+	if publisher != nil {
+		if tr, ok := repo.(application.TxRunner); ok {
+			sch.SetTxRunner(tr)
+		}
+		go publisher.Run(ctx)
+		defer func() {
+			if cerr := publisher.Close(); cerr != nil {
+				slog.Error("scrapper run: outbox publisher close", slog.String("error", cerr.Error()))
+			}
+		}()
+	}
 	go sch.Run(ctx)
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
@@ -101,6 +120,39 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("shutdown: %w", shutErr)
 	}
 	return nil
+}
+
+func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.ClientWithResponses, cfg *config.Config) (application.BotNotifier, *outbox.Publisher, error) {
+	if !cfg.Kafka.Kafka.Enabled {
+		return botclient.NewNotifier(botAPI), nil, nil
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(cfg.Kafka.Producer.Mode))
+	if mode == "" {
+		mode = "direct"
+	}
+	switch mode {
+	case "direct":
+		n, err := kafka.NewNotifier(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer)
+		if err != nil {
+			return nil, nil, fmt.Errorf("scrapper: kafka notifier: %w", err)
+		}
+		return n, nil, nil
+	case "outbox":
+		writeRepo, okWrite := repo.(outbox.NotifierRepository)
+		pollRepo, okPoll := repo.(outbox.PublisherRepository)
+		if !okWrite || !okPoll {
+			return nil, nil, errors.New("scrapper: outbox mode requires a repository with outbox support (use access_type=SQL)")
+		}
+		notifier, err := outbox.NewNotifier(ctx, writeRepo, cfg.Kafka.Kafka)
+		if err != nil {
+			return nil, nil, fmt.Errorf("scrapper: outbox notifier: %w", err)
+		}
+		publisher := outbox.NewPublisher(pollRepo, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer, cfg.Kafka.Producer.Outbox)
+		return notifier, publisher, nil
+	default:
+		return nil, nil, fmt.Errorf("scrapper: unknown kafka producer mode %q (expected direct|outbox)", cfg.Kafka.Producer.Mode)
+	}
 }
 
 func newChatRepository(ctx context.Context, cfg *config.Config) (Repository, error) {

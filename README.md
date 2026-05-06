@@ -4,25 +4,27 @@ Telegram-бот, который отслеживает изменения на �
 
 ## Запуск
 
-1. `.env`: `APP_TELEGRAM_TOKEN` (от [@BotFather](https://t.me/BotFather)).
-2. БД: `make compose-db`, затем `make compose-migrate` (или `make run-db-migration` с `cmd/migrator/config.yaml` и теми же `POSTGRES_*`).
-3. Для скраппера в env: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_SSL_MODE`; опционально `APP_SCRAPPER_ACCESS_TYPE` (`SQL` / `ORM`, по умолчанию SQL).
-4. В `cmd/bot/config.yaml` — `scrapper_url` на HTTP скраппера (порт как у `APP_SCRAPPER_PORT`).
-5. `make run-all` — бот и скраппер; по отдельности: `make run-bot`, `make run-scrapper`.
+1. **Секреты в `.env`**:
+   - `APP_TELEGRAM_TOKEN` — от [@BotFather](https://t.me/BotFather)
+   - `POSTGRES_PASSWORD`
+   - `REDIS_PASSWORD`
 
-## Сборка и тесты
+2. **Инфраструктура (Docker Compose)**  
+   Postgres: `make compose-db` → `make compose-migrate`.  
+   Kafka KRaft (3 брокера) + топики + Kafka UI + **Schema Registry** + Redis: `make compose-kafka`.
 
-- `make build` — бинарники в `bin/`
-- `make test` — юнит-тесты; `make test-integration` — БД в Docker (Testcontainers)
+3. **Schema Registry** после поднятия кластера: схемы подтягиваются **при старте** scrapper/bot (REST `POST /subjects/.../versions`). Для ручной регистрации: `make avro-registrate` (по умолчанию `SCHEMA_REGISTRY_URL=http://localhost:18081`).
 
-Для отладочных логов — задать `logging.mode: "DEBUG"` в `config.yaml`.
+4. **Порты**: бот HTTP `cmd/bot/config.yaml` (`bot_port`), скраппер `cmd/scrapper/config.yaml` (`port`). **Schema Registry**: `http://localhost:18081` (не занимать `:8081` ботом).
 
----
+5. **YAML**: `cmd/bot/config.yaml`, `cmd/scrapper/config.yaml` — брокеры Kafka, топики, `schema_registry_url`, `kafka.enabled`, у скраппера `producer.mode` (`direct` | `outbox`).
 
-## Бонус к ДЗ 4 (многопоточная обработка ссылок)
+6. Запуск приложений: `make run-all` или `make run-bot` / `make run-scrapper`.
 
-<span style="color:#d32f2f; font-weight:700">! ДОП. ЗАДАНИЕ СДЕЛАНО</span>
+## ДЗ 5 допы (все сделаны кроме кросс-ревью)
 
-Реализовано по смыслу бонусного NFR: **параллельная обработка** подписок в батчах из БД (`batch.size` в `cmd/scrapper/config.yaml`, диапазон 50–500), **постоянный пул воркеров** (`scheduler.workers`), ошибка по одной ссылке **не роняет** остальные, пользователь получает **отчёт** по ссылкам с ошибками (`NotifyFailedLinks`). Число потоков задаётся в конфиге, не хардкод.
+- ✓ Ретраи в консьюмере при ошибках обработки.
+- ✓ **Transactional Outbox**.
+- ✓ **Avro**.
 
-Планировщик: пакетная выгрузка ссылок из репозитория → задачи в канал → воркеры обрабатывают параллельно
+**Также:** идемпотентность консьюмера по `eventId` через **Redis**.

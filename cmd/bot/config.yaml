@@ -13,7 +13,7 @@ kafka:
   links_topic: "link-updates"                # должен совпадать с топиком, в который пишет scrapper
   failed_links_topic: "failed-links"         # отдельный топик для нотификаций о неудачных проверках ссылок
   dlq_topic: "link-updates-dlq"              # сюда бот складывает poison pills и сообщения после исчерпания ретраев
-  schema_registry_url: "http://localhost:8081" # для бонусного задания со Schema Registry, в базовом сценарии не используется
+  schema_registry_url: "http://localhost:18081" # Confluent Schema Registry из compose (порт не 8081 — там HTTP бота)
   update_subject: "link-update-event-value"  # subject в SR для LinkUpdateEvent
   failed_subject: "failed-links-event-value" # subject в SR для LinkUpdateFailedEvent
 
@@ -25,3 +25,10 @@ kafka:
     start_offset: "earliest"                 # при первом подключении группы читаем всё с начала; в проде обычно latest
     process_retries: 3                       # ретраи только для бизнес-ошибок (SendMessage); decode/validation идут в DLQ сразу
     retry_delay: "500ms"                     # пауза между попытками SendMessage; защищает Telegram от мгновенных повторов
+
+redis:
+  enabled: true                              # выключить, если запускаешь бота локально без Redis — идемпотентность отключится
+  addr: "localhost:6379"                     # хост:порт Redis; в compose => redis:6379
+  db: 0                                      # номер логической БД Redis; разные сервисы можно изолировать через разные db
+  key_prefix: "bot:processed:"               # префикс ключа для processed event ids; помогает отличать ключи в общем Redis
+  ttl: "24h"                                 # сколько хранить запись об уже обработанном eventId; должно перекрывать максимальный publisher backoff

@@ -45,6 +45,7 @@ type Config struct {
 		config.Kafka `yaml:",inline"`
 		Producer     struct {
 			config.KafkaProducer `yaml:",inline"`
+			Outbox               config.KafkaOutbox `yaml:"outbox"`
 		} `yaml:"producer"`
 	} `yaml:"kafka"`
 }

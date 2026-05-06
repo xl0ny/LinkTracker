@@ -48,7 +48,8 @@ func TestChecker_Check_RoutesGitHub(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.True(t, out.Changed)
-	require.Contains(t, out.Description, "Issue from checker")
+	require.Len(t, out.Updates, 1)
+	require.Contains(t, out.Updates[0].Description, "Issue from checker")
 }
 
 func TestChecker_Check_RoutesStackOverflow(t *testing.T) {

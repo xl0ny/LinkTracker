@@ -1,0 +1,6 @@
+BEGIN;
+
+DROP INDEX IF EXISTS outbox_pending_idx;
+DROP TABLE IF EXISTS outbox;
+
+COMMIT;
