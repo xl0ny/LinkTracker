@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: linktracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d linktracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrator:
+    image: migrate/migrate:v4.19.1
+    profiles: [migrate]
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - "-path"
+      - "/migrations"
+      - "-database"
+      - "postgres://postgres:${POSTGRES_PASSWORD:-app}@db:5432/linktracker?sslmode=disable"
+      - "up"
+
+volumes:
+  pgdata:

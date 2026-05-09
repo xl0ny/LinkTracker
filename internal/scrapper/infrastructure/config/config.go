@@ -11,13 +11,41 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+	commondb "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
 )
 
+type AccessMode string
+
+const (
+	AccessSQL AccessMode = "SQL"
+	AccessORM AccessMode = "ORM"
+)
+
+func (m *AccessMode) Decode(value string) error {
+	v := strings.ToUpper(strings.TrimSpace(value))
+	if v == "" {
+		*m = AccessSQL
+		return nil
+	}
+	switch v {
+	case string(AccessSQL):
+		*m = AccessSQL
+		return nil
+	case string(AccessORM):
+		*m = AccessORM
+		return nil
+	default:
+		return fmt.Errorf("unknown access_type %q (use SQL or ORM)", value)
+	}
+}
+
 type Config struct {
-	BotURL  string `envconfig:"APP_BOT_URL"`
-	Port    string `envconfig:"APP_SCRAPPER_PORT"`
-	Logging struct {
+	commondb.Config `yaml:",inline"`
+	BotURL          string     `yaml:"bot_url"`
+	Port            string     `envconfig:"APP_SCRAPPER_PORT"`
+	AccessType      AccessMode `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
+	Logging         struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 }
@@ -26,33 +54,54 @@ func (c *Config) GetLevel() slog.Level {
 	return logging.LevelFromMode(c.Logging.Mode)
 }
 
+func (c *Config) PostgresDSN() string {
+	return commondb.BuildPostgresDSN(
+		c.DB.PostgresUser,
+		c.PostgresPassword,
+		c.DB.PostgresHost,
+		c.DB.PostgresPort,
+		c.DB.PostgresDB,
+		c.DB.PostgresSSLMode,
+	)
+}
+
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		slog.Info("scrapper config: .env not loaded (optional)", slog.String("error", err.Error()))
+	}
 	var c Config
-	if err := envconfig.Process("", &c); err != nil {
-		return nil, fmt.Errorf("config: %w", err)
+	data, err := os.ReadFile("cmd/scrapper/config.yaml")
+	if err != nil {
+		slog.Error("scrapper config: read cmd/scrapper/config.yaml error", slog.String("error", err.Error()))
+		return nil, fmt.Errorf("config: read cmd/scrapper/config.yaml: %w", err)
+	}
+	if err = yaml.Unmarshal(data, &c); err != nil {
+		return nil, fmt.Errorf("config: parse cmd/scrapper/config.yaml: %w", err)
+	}
+	if envErr := envconfig.Process("", &c); envErr != nil {
+		return nil, fmt.Errorf("config: %w", envErr)
 	}
 	c.BotURL = strings.TrimSpace(c.BotURL)
 	if c.BotURL == "" {
 		c.BotURL = "http://localhost:8081"
 		slog.Info("scrapper config: APP_BOT_URL default", slog.String("bot_url", c.BotURL))
 	}
-	if err := validateBotURL(c.BotURL); err != nil {
-		return nil, fmt.Errorf("config: APP_BOT_URL: %w", err)
+	if validateErr := validateBotURL(c.BotURL); validateErr != nil {
+		return nil, fmt.Errorf("config: APP_BOT_URL: %w", validateErr)
 	}
 	c.Port = strings.TrimSpace(c.Port)
 	if c.Port == "" {
 		c.Port = "8080"
 		slog.Info("scrapper config: APP_SCRAPPER_PORT default", slog.String("port", c.Port))
 	}
-
-	data, err := os.ReadFile("cmd/scrapper/config.yaml")
-	if err != nil {
-		slog.Error("scrapper config: read cmd/scrapper/config.yaml error", slog.String("error", err.Error()))
-		return &c, nil
+	rawAccess := string(c.AccessType)
+	var access AccessMode
+	if err = access.Decode(rawAccess); err != nil {
+		return nil, fmt.Errorf("config: access_type: %w", err)
 	}
-	if err = yaml.Unmarshal(data, &c); err != nil {
-		slog.Error("scrapper config: parse config.yaml error", slog.String("error", err.Error()))
+	c.AccessType = access
+	if rawAccess == "" {
+		slog.Info("scrapper config: access_type default", slog.String("access_type", string(c.AccessType)))
 	}
 	return &c, nil
 }

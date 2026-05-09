@@ -83,7 +83,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 			slog.Error("run: http server serve error", slog.String("error", errSrv.Error()))
 		}
 	}()
-	slog.Info("run: http server started", slog.String("port", cfg.BotPort))
+	swaggerUI := fmt.Sprintf("http://127.0.0.1:%s/swagger", cfg.BotPort)
+	slog.Info("run: http server started",
+		slog.String("port", cfg.BotPort),
+		slog.String("swagger_ui", swaggerUI))
 
 	<-ctx.Done()
 

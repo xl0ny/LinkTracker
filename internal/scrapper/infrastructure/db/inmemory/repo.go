@@ -1,12 +1,13 @@
-package db
+package inmemory
 
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/model"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/inmemory/model"
 )
 
 type repository struct {
@@ -70,15 +71,51 @@ func (r *repository) GetLinks(_ context.Context, chatID int64) ([]domain.Link, e
 	return toDomainLinks(chat.Links), nil
 }
 
-func (r *repository) GetChats(_ context.Context) (map[int64]domain.Chat, error) {
-	chats := make(map[int64]domain.Chat)
-	for id, chat := range r.Chats {
-		chats[id] = domain.Chat{
-			ID:    chat.ID,
-			Links: toDomainLinks(chat.Links),
+func (r *repository) ListSubscriptions(_ context.Context, limit, offset int) ([]domain.Subscription, error) {
+	chatIDs := make([]int64, 0, len(r.Chats))
+	for id := range r.Chats {
+		chatIDs = append(chatIDs, id)
+	}
+	sort.Slice(chatIDs, func(i, j int) bool { return chatIDs[i] < chatIDs[j] })
+
+	all := make([]domain.Subscription, 0)
+	for _, id := range chatIDs {
+		for _, l := range r.Chats[id].Links {
+			all = append(all, domain.Subscription{ChatID: id, Link: toDomainLink(l)})
 		}
 	}
-	return chats, nil
+	if limit <= 0 {
+		return all, nil
+	}
+	if offset >= len(all) {
+		return nil, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], nil
+}
+
+func (r *repository) Close() {}
+
+func (r *repository) CreateTag(_ context.Context, value string) (int64, error) {
+	if value == "" {
+		return 0, errors.New("empty tag")
+	}
+	return 1, nil
+}
+
+func (r *repository) ListTags(_ context.Context, _, _ int) ([]domain.Tag, error) {
+	return nil, nil
+}
+
+func (r *repository) UpdateTag(_ context.Context, _ int64, _ string) error {
+	return errors.New("inmemory: tags not supported")
+}
+
+func (r *repository) DeleteTag(_ context.Context, _ int64) error {
+	return errors.New("inmemory: tags not supported")
 }
 
 func (r *repository) DeleteLink(_ context.Context, chatID int64, linkURL string) (domain.Link, error) {

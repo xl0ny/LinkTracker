@@ -53,7 +53,11 @@ func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.
 	if err != nil {
 		return time.Time{}, fmt.Errorf("do request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil && err == nil {
+			err = fmt.Errorf("close response body: %w", cerr)
+		}
+	}()
 	if resp.StatusCode == http.StatusNotFound {
 		return time.Time{}, fmt.Errorf("repo not found: %s", repoURL)
 	}
