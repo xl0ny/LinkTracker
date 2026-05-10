@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
@@ -45,7 +47,14 @@ type Config struct {
 	BotURL          string     `yaml:"bot_url"`
 	Port            string     `envconfig:"APP_SCRAPPER_PORT"`
 	AccessType      AccessMode `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
-	Logging         struct {
+	Batch           struct {
+		Size int `yaml:"size"`
+	} `yaml:"batch"`
+	Scheduler struct {
+		Interval string `yaml:"interval"`
+		Workers  int    `yaml:"workers"`
+	} `yaml:"scheduler"`
+	Logging struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 }
@@ -103,7 +112,64 @@ func Load() (*Config, error) {
 	if rawAccess == "" {
 		slog.Info("scrapper config: access_type default", slog.String("access_type", string(c.AccessType)))
 	}
+	normalizeBatchAndScheduler(&c)
 	return &c, nil
+}
+
+func normalizeBatchAndScheduler(c *Config) {
+	if c.Batch.Size == 0 {
+		c.Batch.Size = 100
+		slog.Info("scrapper config: batch.size default", slog.Int("batch_size", c.Batch.Size))
+	}
+	if c.Batch.Size < 50 || c.Batch.Size > 500 {
+		slog.Warn("scrapper config: invalid batch.size, using default 100", slog.Int("batch_size", c.Batch.Size))
+		c.Batch.Size = 100
+	}
+	if c.Scheduler.Workers < 1 {
+		slog.Warn("scrapper config: invalid scheduler.workers, using default 4", slog.Int("workers", c.Scheduler.Workers))
+		c.Scheduler.Workers = 4
+	}
+	if strings.TrimSpace(c.Scheduler.Interval) == "" {
+		c.Scheduler.Interval = "1m"
+		slog.Info("scrapper config: scheduler.interval default", slog.String("scheduler_interval", c.Scheduler.Interval))
+	}
+	if _, parseErr := parseSchedulerInterval(c.Scheduler.Interval); parseErr != nil {
+		slog.Warn(
+			"scrapper config: invalid scheduler.interval, using default 1m",
+			slog.String("scheduler_interval", c.Scheduler.Interval),
+			slog.String("error", parseErr.Error()),
+		)
+		c.Scheduler.Interval = "1m"
+	}
+}
+
+func (c *Config) SchedulerInterval() time.Duration {
+	d, err := parseSchedulerInterval(c.Scheduler.Interval)
+	if err != nil {
+		return time.Minute
+	}
+	return d
+}
+
+func parseSchedulerInterval(raw string) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, errors.New("empty interval")
+	}
+	if value, atoiErr := strconv.Atoi(raw); atoiErr == nil {
+		if value <= 0 {
+			return 0, errors.New("interval must be > 0")
+		}
+		return time.Duration(value) * time.Second, nil
+	}
+	d, durErr := time.ParseDuration(raw)
+	if durErr != nil {
+		return 0, fmt.Errorf("parse duration: %w", durErr)
+	}
+	if d <= 0 {
+		return 0, errors.New("interval must be > 0")
+	}
+	return d, nil
 }
 
 func validateBotURL(raw string) error {

@@ -19,10 +19,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application"
+	scrapperapp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/app"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/orm"
 	sqlrepo "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/pgrepo"
+)
+
+var (
+	_ scrapperapp.Repository = (*sqlrepo.Repository)(nil)
+	_ scrapperapp.Repository = (*orm.Repository)(nil)
 )
 
 func projectRoot(t *testing.T) string {
@@ -88,23 +93,18 @@ func startPostgres(t *testing.T) (ctx context.Context, dsn string, terminate fun
 
 func waitPostgresReady(t *testing.T, ctx context.Context, dsn string) {
 	t.Helper()
-	const (
-		maxAttempts   = 20
-		retryInterval = time.Second
-	)
+	deadline := time.Now().Add(45 * time.Second)
 	var last error
-	for i := 0; i < maxAttempts; i++ {
+	for time.Now().Before(deadline) {
 		p, err := pgxpool.New(ctx, dsn)
 		if err == nil {
 			p.Close()
 			return
 		}
 		last = err
-		if i < maxAttempts-1 {
-			time.Sleep(retryInterval)
-		}
+		time.Sleep(150 * time.Millisecond)
 	}
-	require.NoError(t, last, "postgres did not accept connections after %d attempts", maxAttempts)
+	require.NoError(t, last, "postgres did not accept connections")
 }
 
 func TestMigrationsUpOnCleanDB(t *testing.T) {
@@ -124,17 +124,17 @@ func TestChatRepository_SQLAndORM(t *testing.T) {
 
 	tests := []struct {
 		name string
-		new  func(context.Context, string) (application.ChatRepository, error)
+		new  func(context.Context, string) (scrapperapp.Repository, error)
 	}{
 		{
 			name: "SQL",
-			new: func(c context.Context, d string) (application.ChatRepository, error) {
+			new: func(c context.Context, d string) (scrapperapp.Repository, error) {
 				return sqlrepo.NewRepository(c, d)
 			},
 		},
 		{
 			name: "ORM",
-			new: func(c context.Context, d string) (application.ChatRepository, error) {
+			new: func(c context.Context, d string) (scrapperapp.Repository, error) {
 				return orm.NewRepository(c, d)
 			},
 		},
@@ -150,12 +150,16 @@ func TestChatRepository_SQLAndORM(t *testing.T) {
 	}
 }
 
-func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.ChatRepository) {
+func runRepositoryScenarios(t *testing.T, ctx context.Context, repo scrapperapp.Repository) {
 	t.Helper()
 	chatID := int64(42)
 
 	require.NoError(t, repo.AddChat(ctx, chatID))
 	require.ErrorIs(t, repo.AddChat(ctx, chatID), domain.ErrChatAlreadyExists)
+
+	emptySubs, err := repo.ListSubscribedLinks(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Empty(t, emptySubs)
 
 	require.ErrorIs(t, repo.AddLink(ctx, 999, "https://x.test", nil, nil), domain.ErrChatNotFound)
 
@@ -165,7 +169,7 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 	require.NoError(t, repo.AddLink(ctx, chatID, link, &tags, &filters))
 	require.ErrorIs(t, repo.AddLink(ctx, chatID, link, nil, nil), domain.ErrLinkAlreadyExists)
 
-	links, err := repo.GetLinks(ctx, chatID)
+	links, err := repo.GetLinks(ctx, chatID, 0, 0)
 	require.NoError(t, err)
 	require.Len(t, links, 1)
 	require.Equal(t, link, links[0].URL)
@@ -173,23 +177,48 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 	require.Equal(t, []string{"issue"}, links[0].Filters)
 
 	require.NoError(t, repo.AddLink(ctx, chatID, "https://example.com/second", nil, nil))
-	allLinks, err := repo.GetLinks(ctx, chatID)
+	one, err := repo.GetLinks(ctx, chatID, 1, 0)
 	require.NoError(t, err)
-	require.Len(t, allLinks, 2)
+	require.Len(t, one, 1)
+	two, err := repo.GetLinks(ctx, chatID, 1, 1)
+	require.NoError(t, err)
+	require.Len(t, two, 1)
+	require.NotEqual(t, one[0].URL, two[0].URL)
 
-	subsAll, err := repo.ListSubscriptions(ctx, 0, 0)
+	allSubs, err := repo.ListSubscribedLinks(ctx, 0, 0)
 	require.NoError(t, err)
-	require.Len(t, subsAll, 2)
-	for _, s := range subsAll {
-		require.Equal(t, chatID, s.ChatID)
-	}
-	subsPage1, err := repo.ListSubscriptions(ctx, 1, 0)
+	require.Len(t, allSubs, 2)
+	require.Equal(t, chatID, allSubs[0].ChatID)
+	require.Equal(t, chatID, allSubs[1].ChatID)
+	require.Equal(t, link, allSubs[0].Link.URL)
+	require.Equal(t, "https://example.com/second", allSubs[1].Link.URL)
+
+	subsPage1, err := repo.ListSubscribedLinks(ctx, 1, 0)
 	require.NoError(t, err)
 	require.Len(t, subsPage1, 1)
-	subsPage2, err := repo.ListSubscriptions(ctx, 1, 1)
+	require.Equal(t, link, subsPage1[0].Link.URL)
+
+	subsPage2, err := repo.ListSubscribedLinks(ctx, 1, 1)
 	require.NoError(t, err)
 	require.Len(t, subsPage2, 1)
-	require.NotEqual(t, subsPage1[0].Link.URL, subsPage2[0].Link.URL)
+	require.Equal(t, "https://example.com/second", subsPage2[0].Link.URL)
+
+	require.NoError(t, repo.AddChat(ctx, 99))
+	require.NoError(t, repo.AddLink(ctx, 99, "https://ninety-nine.test", nil, nil))
+	multiSubs, err := repo.ListSubscribedLinks(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, multiSubs, 3)
+	require.Equal(t, int64(99), multiSubs[2].ChatID)
+	require.Equal(t, "https://ninety-nine.test", multiSubs[2].Link.URL)
+	require.NoError(t, repo.DeleteChat(ctx, 99))
+
+	chatsAll, err := repo.GetChats(ctx, 0, 0)
+	require.NoError(t, err)
+	require.Contains(t, chatsAll, chatID)
+
+	chatsPage, err := repo.GetChats(ctx, 10, 0)
+	require.NoError(t, err)
+	require.Contains(t, chatsPage, chatID)
 
 	removed, err := repo.DeleteLink(ctx, chatID, "https://example.com/second")
 	require.NoError(t, err)
@@ -197,7 +226,7 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 
 	ts := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
 	require.NoError(t, repo.UpdateLinkUpdatedAt(ctx, chatID, link, ts))
-	after, err := repo.GetLinks(ctx, chatID)
+	after, err := repo.GetLinks(ctx, chatID, 0, 0)
 	require.NoError(t, err)
 	require.Len(t, after, 1)
 	require.True(t, after[0].LastUpdated.Equal(ts))
@@ -226,6 +255,6 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo application.
 
 	require.NoError(t, repo.DeleteChat(ctx, chatID))
 	require.ErrorIs(t, repo.DeleteChat(ctx, chatID), domain.ErrChatNotFound)
-	_, err = repo.GetLinks(ctx, chatID)
+	_, err = repo.GetLinks(ctx, chatID, 0, 0)
 	require.ErrorIs(t, err, domain.ErrChatNotFound)
 }

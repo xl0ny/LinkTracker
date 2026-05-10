@@ -4,17 +4,12 @@
 
 package model
 
-import (
-	"time"
-)
-
 const TableNameLink = "links"
 
 // Link mapped from table <links>
 type Link struct {
-	ID            int64     `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
-	URL           string    `gorm:"column:url;not null" json:"url"`
-	LastUpdatedAt time.Time `gorm:"column:last_updated_at" json:"last_updated_at"`
+	ID  int64  `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
+	URL string `gorm:"column:url;not null" json:"url"`
 }
 
 // TableName Link's table name

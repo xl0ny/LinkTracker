@@ -24,6 +24,19 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/handler"
 )
 
+type Repository interface {
+	application.SchedulerLinks
+	application.ChatRepository
+	application.LinkRepository
+	application.TagRepository
+	Close()
+}
+
+var (
+	_ Repository = (*pgrepo.Repository)(nil)
+	_ Repository = (*orm.Repository)(nil)
+)
+
 func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -34,7 +47,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	defer repo.Close()
 
-	usecase := application.NewChatUC(repo)
+	usecase := application.NewChatUC(repo, repo)
 	h := handler.NewHandler(usecase)
 	r := chi.NewRouter()
 
@@ -61,7 +74,14 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	gh := github.NewClient(nil, os.Getenv("GITHUB_TOKEN"))
 	so := stackoverflow.NewClient(nil)
 	lc := checker.New(gh, so)
-	sch := application.NewScheduler(repo, lc, notifier)
+	sch := application.NewScheduler(
+		repo,
+		lc,
+		notifier,
+		cfg.Batch.Size,
+		cfg.Scheduler.Workers,
+		cfg.SchedulerInterval(),
+	)
 	go sch.Run(ctx)
 
 	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
@@ -78,11 +98,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	<-ctx.Done()
 	if shutdownErr := srv.Shutdown(context.Background()); shutdownErr != nil {
 		return fmt.Errorf("shutdown: %w", shutdownErr)
+
 	}
 	return nil
 }
 
-func newChatRepository(ctx context.Context, cfg *config.Config) (application.ChatRepository, error) {
+func newChatRepository(ctx context.Context, cfg *config.Config) (Repository, error) {
 	mode := cfg.AccessType
 	if mode == "" {
 		mode = config.AccessSQL

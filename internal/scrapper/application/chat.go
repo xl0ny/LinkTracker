@@ -11,9 +11,12 @@ import (
 type ChatRepository interface {
 	AddChat(ctx context.Context, id int64) error
 	DeleteChat(ctx context.Context, id int64) error
+	GetChats(ctx context.Context, limit, offset int) (map[int64]domain.Chat, error)
+}
+
+type LinkRepository interface {
 	AddLink(ctx context.Context, chatID int64, link string, tags, filters *[]string) error
-	GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error)
-	ListSubscriptions(ctx context.Context, limit, offset int) ([]domain.Subscription, error)
+	GetLinks(ctx context.Context, chatID int64, limit, offset int) ([]domain.Link, error)
 	DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error)
 	UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error
 	CreateTag(ctx context.Context, value string) (int64, error)
@@ -23,48 +26,49 @@ type ChatRepository interface {
 	Close()
 }
 
-type chatUC struct {
-	repo ChatRepository
+type ChatUC struct {
+	chats ChatRepository
+	links LinkRepository
 }
 
-//revive:disable-next-line:unexported-return returning *chatUC is intentional (internal impl)
-func NewChatUC(repo ChatRepository) *chatUC {
-	return &chatUC{
-		repo: repo,
+func NewChatUC(chats ChatRepository, links LinkRepository) *ChatUC {
+	return &ChatUC{
+		chats: chats,
+		links: links,
 	}
 }
 
-func (uc *chatUC) ChatRegistration(ctx context.Context, id int64) error {
-	if err := uc.repo.AddChat(ctx, id); err != nil {
+func (uc *ChatUC) ChatRegistration(ctx context.Context, id int64) error {
+	if err := uc.chats.AddChat(ctx, id); err != nil {
 		return fmt.Errorf("add chat: %w", err)
 	}
 	return nil
 }
 
-func (uc *chatUC) ChatDelition(ctx context.Context, id int64) error {
-	if err := uc.repo.DeleteChat(ctx, id); err != nil {
+func (uc *ChatUC) ChatDelition(ctx context.Context, id int64) error {
+	if err := uc.chats.DeleteChat(ctx, id); err != nil {
 		return fmt.Errorf("delete chat: %w", err)
 	}
 	return nil
 }
 
-func (uc *chatUC) LinkAddment(ctx context.Context, chatID int64, link string, tags, filters *[]string) error {
-	if err := uc.repo.AddLink(ctx, chatID, link, tags, filters); err != nil {
+func (uc *ChatUC) LinkAddment(ctx context.Context, chatID int64, link string, tags, filters *[]string) error {
+	if err := uc.links.AddLink(ctx, chatID, link, tags, filters); err != nil {
 		return fmt.Errorf("add link: %w", err)
 	}
 	return nil
 }
 
-func (uc *chatUC) GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error) {
-	links, err := uc.repo.GetLinks(ctx, chatID)
+func (uc *ChatUC) GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error) {
+	links, err := uc.links.GetLinks(ctx, chatID, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("get links: %w", err)
 	}
 	return links, nil
 }
 
-func (uc *chatUC) DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error) {
-	link, err := uc.repo.DeleteLink(ctx, chatID, linkURL)
+func (uc *ChatUC) DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error) {
+	link, err := uc.links.DeleteLink(ctx, chatID, linkURL)
 	if err != nil {
 		return domain.Link{}, fmt.Errorf("delete link: %w", err)
 	}
