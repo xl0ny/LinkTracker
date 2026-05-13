@@ -11,7 +11,6 @@ import (
 type ChatRepository interface {
 	AddChat(ctx context.Context, id int64) error
 	DeleteChat(ctx context.Context, id int64) error
-	GetChats(ctx context.Context, limit, offset int) (map[int64]domain.Chat, error)
 }
 
 type LinkRepository interface {

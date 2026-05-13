@@ -29,6 +29,7 @@ func newLink(db *gorm.DB, opts ...gen.DOOption) link {
 	_link.ALL = field.NewAsterisk(tableName)
 	_link.ID = field.NewInt64(tableName, "id")
 	_link.URL = field.NewString(tableName, "url")
+	_link.LastUpdatedAt = field.NewTime(tableName, "last_updated_at")
 
 	_link.fillFieldMap()
 
@@ -38,9 +39,10 @@ func newLink(db *gorm.DB, opts ...gen.DOOption) link {
 type link struct {
 	linkDo
 
-	ALL field.Asterisk
-	ID  field.Int64
-	URL field.String
+	ALL           field.Asterisk
+	ID            field.Int64
+	URL           field.String
+	LastUpdatedAt field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -59,6 +61,7 @@ func (l *link) updateTableName(table string) *link {
 	l.ALL = field.NewAsterisk(table)
 	l.ID = field.NewInt64(table, "id")
 	l.URL = field.NewString(table, "url")
+	l.LastUpdatedAt = field.NewTime(table, "last_updated_at")
 
 	l.fillFieldMap()
 
@@ -75,9 +78,10 @@ func (l *link) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (l *link) fillFieldMap() {
-	l.fieldMap = make(map[string]field.Expr, 2)
+	l.fieldMap = make(map[string]field.Expr, 3)
 	l.fieldMap["id"] = l.ID
 	l.fieldMap["url"] = l.URL
+	l.fieldMap["last_updated_at"] = l.LastUpdatedAt
 }
 
 func (l link) clone(db *gorm.DB) link {

@@ -25,16 +25,20 @@ func (c *Checker) Check(ctx context.Context, link domain.Link) (domain.LinkCheck
 	if err != nil {
 		return domain.LinkCheckOutcome{}, fmt.Errorf("parse url: %w", err)
 	}
-	prev := link.LastUpdated
 	switch {
-	case u.Host == "github.com":
-		ghOut, ghErr := c.github.CheckLink(ctx, link.URL, prev)
+	// GitHub: клиент и parseGitHubRef рассчитаны на хост github.com (репозитории, issues, PR).
+	// Не используем HasSuffix(".github.com"): gist.github.com, raw.githubusercontent.com и т.п. —
+	// другие API; их нельзя обрабатывать тем же CheckLink без отдельной логики.
+	// www — частый вариант записи той же страницы.
+	case u.Host == "github.com" || u.Host == "www.github.com":
+		ghOut, ghErr := c.github.CheckLink(ctx, link)
 		if ghErr != nil {
 			return domain.LinkCheckOutcome{}, fmt.Errorf("github check: %w", ghErr)
 		}
 		return ghOut, nil
+	// Stack Exchange: региональные и meta-сайты (ru.*, meta.*, …) с тем же путём /questions/….
 	case u.Host == "stackoverflow.com" || strings.HasSuffix(u.Host, ".stackoverflow.com"):
-		soOut, soErr := c.stackover.CheckQuestion(ctx, link.URL, prev)
+		soOut, soErr := c.stackover.CheckQuestion(ctx, link)
 		if soErr != nil {
 			return domain.LinkCheckOutcome{}, fmt.Errorf("stackoverflow check: %w", soErr)
 		}

@@ -48,6 +48,9 @@ func Load() (*Config, error) {
 		slog.Error("bot config: parse config.yaml error", slog.String("error", err.Error()))
 	}
 
+	if v := strings.TrimSpace(os.Getenv("APP_SCRAPPER_URL")); v != "" {
+		config.ScrapperURL = v
+	}
 	config.ScrapperURL = strings.TrimSpace(config.ScrapperURL)
 	if config.ScrapperURL == "" {
 		config.ScrapperURL = "http://localhost:8080"

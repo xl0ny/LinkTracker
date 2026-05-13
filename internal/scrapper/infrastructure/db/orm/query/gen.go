@@ -17,44 +17,41 @@ import (
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:              db,
-		Chat:            newChat(db, opts...),
-		Filter:          newFilter(db, opts...),
-		Link:            newLink(db, opts...),
-		LinkFilter:      newLinkFilter(db, opts...),
-		LinkTag:         newLinkTag(db, opts...),
-		SchemaMigration: newSchemaMigration(db, opts...),
-		Subscription:    newSubscription(db, opts...),
-		Tag:             newTag(db, opts...),
+		db:           db,
+		Chat:         newChat(db, opts...),
+		Filter:       newFilter(db, opts...),
+		Link:         newLink(db, opts...),
+		LinkFilter:   newLinkFilter(db, opts...),
+		LinkTag:      newLinkTag(db, opts...),
+		Subscription: newSubscription(db, opts...),
+		Tag:          newTag(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	Chat            chat
-	Filter          filter
-	Link            link
-	LinkFilter      linkFilter
-	LinkTag         linkTag
-	SchemaMigration schemaMigration
-	Subscription    subscription
-	Tag             tag
+	Chat         chat
+	Filter       filter
+	Link         link
+	LinkFilter   linkFilter
+	LinkTag      linkTag
+	Subscription subscription
+	Tag          tag
 }
 
 func (q *Query) Available() bool { return q.db != nil }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:              db,
-		Chat:            q.Chat.clone(db),
-		Filter:          q.Filter.clone(db),
-		Link:            q.Link.clone(db),
-		LinkFilter:      q.LinkFilter.clone(db),
-		LinkTag:         q.LinkTag.clone(db),
-		SchemaMigration: q.SchemaMigration.clone(db),
-		Subscription:    q.Subscription.clone(db),
-		Tag:             q.Tag.clone(db),
+		db:           db,
+		Chat:         q.Chat.clone(db),
+		Filter:       q.Filter.clone(db),
+		Link:         q.Link.clone(db),
+		LinkFilter:   q.LinkFilter.clone(db),
+		LinkTag:      q.LinkTag.clone(db),
+		Subscription: q.Subscription.clone(db),
+		Tag:          q.Tag.clone(db),
 	}
 }
 
@@ -68,39 +65,36 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:              db,
-		Chat:            q.Chat.replaceDB(db),
-		Filter:          q.Filter.replaceDB(db),
-		Link:            q.Link.replaceDB(db),
-		LinkFilter:      q.LinkFilter.replaceDB(db),
-		LinkTag:         q.LinkTag.replaceDB(db),
-		SchemaMigration: q.SchemaMigration.replaceDB(db),
-		Subscription:    q.Subscription.replaceDB(db),
-		Tag:             q.Tag.replaceDB(db),
+		db:           db,
+		Chat:         q.Chat.replaceDB(db),
+		Filter:       q.Filter.replaceDB(db),
+		Link:         q.Link.replaceDB(db),
+		LinkFilter:   q.LinkFilter.replaceDB(db),
+		LinkTag:      q.LinkTag.replaceDB(db),
+		Subscription: q.Subscription.replaceDB(db),
+		Tag:          q.Tag.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	Chat            *chatDo
-	Filter          *filterDo
-	Link            *linkDo
-	LinkFilter      *linkFilterDo
-	LinkTag         *linkTagDo
-	SchemaMigration *schemaMigrationDo
-	Subscription    *subscriptionDo
-	Tag             *tagDo
+	Chat         *chatDo
+	Filter       *filterDo
+	Link         *linkDo
+	LinkFilter   *linkFilterDo
+	LinkTag      *linkTagDo
+	Subscription *subscriptionDo
+	Tag          *tagDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		Chat:            q.Chat.WithContext(ctx),
-		Filter:          q.Filter.WithContext(ctx),
-		Link:            q.Link.WithContext(ctx),
-		LinkFilter:      q.LinkFilter.WithContext(ctx),
-		LinkTag:         q.LinkTag.WithContext(ctx),
-		SchemaMigration: q.SchemaMigration.WithContext(ctx),
-		Subscription:    q.Subscription.WithContext(ctx),
-		Tag:             q.Tag.WithContext(ctx),
+		Chat:         q.Chat.WithContext(ctx),
+		Filter:       q.Filter.WithContext(ctx),
+		Link:         q.Link.WithContext(ctx),
+		LinkFilter:   q.LinkFilter.WithContext(ctx),
+		LinkTag:      q.LinkTag.WithContext(ctx),
+		Subscription: q.Subscription.WithContext(ctx),
+		Tag:          q.Tag.WithContext(ctx),
 	}
 }
 

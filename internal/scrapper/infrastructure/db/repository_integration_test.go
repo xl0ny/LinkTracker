@@ -211,14 +211,11 @@ func runRepositoryScenarios(t *testing.T, ctx context.Context, repo scrapperapp.
 	require.Equal(t, int64(99), multiSubs[2].ChatID)
 	require.Equal(t, "https://ninety-nine.test", multiSubs[2].Link.URL)
 	require.NoError(t, repo.DeleteChat(ctx, 99))
-
-	chatsAll, err := repo.GetChats(ctx, 0, 0)
+	afterDel99, err := repo.ListSubscribedLinks(ctx, 0, 0)
 	require.NoError(t, err)
-	require.Contains(t, chatsAll, chatID)
-
-	chatsPage, err := repo.GetChats(ctx, 10, 0)
-	require.NoError(t, err)
-	require.Contains(t, chatsPage, chatID)
+	for _, sl := range afterDel99 {
+		require.NotEqual(t, int64(99), sl.ChatID, "подписки удалённого чата не должны оставаться в выборке")
+	}
 
 	removed, err := repo.DeleteLink(ctx, chatID, "https://example.com/second")
 	require.NoError(t, err)

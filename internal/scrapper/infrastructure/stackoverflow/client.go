@@ -85,13 +85,13 @@ type soCandidate struct {
 	comment commentItem
 }
 
-// CheckQuestion ищет новый ответ, комментарий к вопросу или комментарий к ответу после since.
-func (c *Client) CheckQuestion(ctx context.Context, questionURL string, since time.Time) (domain.LinkCheckOutcome, error) {
-	id, err := parseQuestionID(questionURL)
+// CheckQuestion ищет новый ответ, комментарий к вопросу или комментарий к ответу после link.LastUpdated.
+func (c *Client) CheckQuestion(ctx context.Context, link domain.Link) (domain.LinkCheckOutcome, error) {
+	id, err := parseQuestionID(link.URL)
 	if err != nil {
 		return domain.LinkCheckOutcome{}, fmt.Errorf("parse question url: %w", err)
 	}
-	return c.checkQuestionByID(ctx, strconv.FormatInt(id, 10), since, questionURL)
+	return c.checkQuestionByID(ctx, strconv.FormatInt(id, 10), link.LastUpdated, link.URL)
 }
 
 func computeSOWatermark(q questionItem, awrap seWrapper[answerItem], qComments seWrapper[commentItem], aComments []commentItem) time.Time {
@@ -173,7 +173,7 @@ func soOutcomeFromBest(best *soCandidate, q questionItem, questionURL string) do
 
 // CheckUpdated оставлен для обратной совместимости; для ДЗ используйте CheckQuestion.
 func (c *Client) CheckUpdated(ctx context.Context, questionURL string) (latest time.Time, err error) {
-	out, err := c.CheckQuestion(ctx, questionURL, time.Time{})
+	out, err := c.CheckQuestion(ctx, domain.Link{URL: questionURL})
 	if err != nil {
 		return time.Time{}, fmt.Errorf("stackoverflow CheckUpdated: %w", err)
 	}
@@ -181,7 +181,7 @@ func (c *Client) CheckUpdated(ctx context.Context, questionURL string) (latest t
 }
 
 func (c *Client) checkQuestionByID(ctx context.Context, idStr string, since time.Time, questionURL string) (domain.LinkCheckOutcome, error) {
-	q, awrap, qComments, aComments, err := c.loadStackOverflowQuestionBundle(ctx, idStr)
+	q, awrap, qComments, aComments, err := c.loadStackOverflowQuestionBundle(ctx, idStr, since)
 	if err != nil {
 		return domain.LinkCheckOutcome{}, err
 	}
@@ -198,7 +198,7 @@ func (c *Client) checkQuestionByID(ctx context.Context, idStr string, since time
 	return soOutcomeFromBest(best, q, questionURL), nil
 }
 
-func (c *Client) loadStackOverflowQuestionBundle(ctx context.Context, idStr string) (questionItem, seWrapper[answerItem], seWrapper[commentItem], []commentItem, error) {
+func (c *Client) loadStackOverflowQuestionBundle(ctx context.Context, idStr string, since time.Time) (questionItem, seWrapper[answerItem], seWrapper[commentItem], []commentItem, error) {
 	qURL := fmt.Sprintf("%s/questions/%s?site=stackoverflow&filter=%s", c.apiBase, idStr, withBody)
 	var qwrap seWrapper[questionItem]
 	if qErr := c.getJSON(ctx, qURL, &qwrap); qErr != nil {
@@ -209,13 +209,25 @@ func (c *Client) loadStackOverflowQuestionBundle(ctx context.Context, idStr stri
 	}
 	q := qwrap.Items[0]
 
+	// Список ответов без fromdate: у SE fromdate на /answers режет по creation_date ответа;
+	// новый комментарий к старому ответу после since иначе не попадёт в выборку.
 	aURL := fmt.Sprintf("%s/questions/%s/answers?site=stackoverflow&order=desc&sort=creation&pagesize=100&filter=%s", c.apiBase, idStr, withBody)
 	var awrap seWrapper[answerItem]
 	if aErr := c.getJSON(ctx, aURL, &awrap); aErr != nil {
 		return q, seWrapper[answerItem]{}, seWrapper[commentItem]{}, nil, fmt.Errorf("answers: %w", aErr)
 	}
 
-	cURL := fmt.Sprintf("%s/questions/%s/comments?site=stackoverflow&order=desc&sort=creation&pagesize=100&filter=%s", c.apiBase, idStr, withBody)
+	cVals := url.Values{}
+	cVals.Set("site", "stackoverflow")
+	cVals.Set("order", "desc")
+	cVals.Set("sort", "creation")
+	cVals.Set("pagesize", "100")
+	cVals.Set("filter", withBody)
+	if !since.IsZero() {
+		// https://api.stackexchange.com/docs/comments-on-questions — fromdate по creation_date комментария
+		cVals.Set("fromdate", strconv.FormatInt(since.Unix(), 10))
+	}
+	cURL := fmt.Sprintf("%s/questions/%s/comments?%s", c.apiBase, idStr, cVals.Encode())
 	var qComments seWrapper[commentItem]
 	if cErr := c.getJSON(ctx, cURL, &qComments); cErr != nil {
 		return q, awrap, seWrapper[commentItem]{}, nil, fmt.Errorf("comments: %w", cErr)
@@ -225,14 +237,14 @@ func (c *Client) loadStackOverflowQuestionBundle(ctx context.Context, idStr stri
 	for _, a := range awrap.Items {
 		answerIDs = append(answerIDs, a.AnswerID)
 	}
-	aComments, acErr := c.fetchAnswerComments(ctx, answerIDs)
+	aComments, acErr := c.fetchAnswerComments(ctx, answerIDs, since)
 	if acErr != nil {
 		return q, awrap, qComments, nil, fmt.Errorf("answer comments: %w", acErr)
 	}
 	return q, awrap, qComments, aComments, nil
 }
 
-func (c *Client) fetchAnswerComments(ctx context.Context, answerIDs []int64) ([]commentItem, error) {
+func (c *Client) fetchAnswerComments(ctx context.Context, answerIDs []int64, since time.Time) ([]commentItem, error) {
 	if len(answerIDs) == 0 {
 		return nil, nil
 	}
@@ -247,8 +259,16 @@ func (c *Client) fetchAnswerComments(ctx context.Context, answerIDs []int64) ([]
 		for _, id := range answerIDs[i:end] {
 			parts = append(parts, strconv.FormatInt(id, 10))
 		}
-		u := fmt.Sprintf("%s/answers/%s/comments?site=stackoverflow&order=desc&sort=creation&pagesize=100&filter=%s",
-			c.apiBase, strings.Join(parts, ";"), withBody)
+		q := url.Values{}
+		q.Set("site", "stackoverflow")
+		q.Set("order", "desc")
+		q.Set("sort", "creation")
+		q.Set("pagesize", "100")
+		q.Set("filter", withBody)
+		if !since.IsZero() {
+			q.Set("fromdate", strconv.FormatInt(since.Unix(), 10))
+		}
+		u := fmt.Sprintf("%s/answers/%s/comments?%s", c.apiBase, strings.Join(parts, ";"), q.Encode())
 		var wrap seWrapper[commentItem]
 		if err := c.getJSON(ctx, u, &wrap); err != nil {
 			return nil, fmt.Errorf("answer comments: %w", err)

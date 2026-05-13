@@ -2,13 +2,11 @@ package orm
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/lib/pq"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -77,44 +75,25 @@ func (r *Repository) DeleteChat(ctx context.Context, id int64) error {
 
 func (r *Repository) AddLink(ctx context.Context, chatID int64, link string, tags, filters *[]string) error {
 	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return addLinkInTx(tx, chatID, link, tags, filters)
+		return addLinkInTx(ctx, tx, chatID, link, tags, filters)
 	}); err != nil {
 		return fmt.Errorf("orm repo: AddLink: %w", err)
 	}
 	return nil
 }
 
-func addLinkInTx(tx *gorm.DB, chatID int64, link string, tags, filters *[]string) error {
-	var internalChatID int64
-	row := tx.Raw(`SELECT id FROM chats WHERE telegram_id = ?`, chatID).Row()
-	if err := row.Scan(&internalChatID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return domain.ErrChatNotFound
-		}
-		return fmt.Errorf("orm repo: AddLink load chat (%w)", err)
+func addLinkInTx(ctx context.Context, tx *gorm.DB, chatID int64, link string, tags, filters *[]string) error {
+	internalChatID, err := resolveChatPK(ctx, tx, chatID)
+	if err != nil {
+		return err
 	}
-
-	var linkRowID int64
-	if err := tx.Raw(`
-			INSERT INTO links (url) VALUES (?)
-			ON CONFLICT (url) DO UPDATE SET url = links.url
-			RETURNING id`, link).Scan(&linkRowID).Error; err != nil {
-		return fmt.Errorf("orm repo: AddLink link upsert (%w)", err)
+	linkRow, err := getOrInsertLink(ctx, tx, link)
+	if err != nil {
+		return err
 	}
-
-	var subID int64
-	if err := tx.Raw(`
-			INSERT INTO subscriptions (chat_id, link_id)
-			VALUES (?, ?)
-			ON CONFLICT (chat_id, link_id) DO NOTHING
-			RETURNING id`, internalChatID, linkRowID).Scan(&subID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, sql.ErrNoRows) {
-			return domain.ErrLinkAlreadyExists
-		}
-		return fmt.Errorf("orm repo: AddLink subscription (%w)", err)
-	}
-	if subID == 0 {
-		return domain.ErrLinkAlreadyExists
+	subRow, err := insertSubscription(ctx, tx, internalChatID, linkRow.ID)
+	if err != nil {
+		return err
 	}
 
 	tagVals := []string{}
@@ -125,12 +104,13 @@ func addLinkInTx(tx *gorm.DB, chatID int64, link string, tags, filters *[]string
 		if v == "" {
 			continue
 		}
-		tagID, tagErr := getOrCreateTagID(tx, v)
+		tagID, tagErr := getOrCreateTagID(ctx, tx, v)
 		if tagErr != nil {
 			return tagErr
 		}
-		if execErr := tx.Exec(`INSERT INTO link_tag (subscription_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING`, subID, tagID).Error; execErr != nil {
-			return fmt.Errorf("orm repo: AddLink link_tag (%w)", execErr)
+		row := model.LinkTag{SubscriptionID: subRow.ID, TagID: tagID}
+		if juncErr := tx.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; juncErr != nil {
+			return fmt.Errorf("orm repo: AddLink link_tag (%w)", juncErr)
 		}
 	}
 
@@ -142,294 +122,334 @@ func addLinkInTx(tx *gorm.DB, chatID int64, link string, tags, filters *[]string
 		if v == "" {
 			continue
 		}
-		filterID, filterErr := getOrCreateFilterID(tx, v)
+		filterID, filterErr := getOrCreateFilterID(ctx, tx, v)
 		if filterErr != nil {
 			return filterErr
 		}
-		if execErr := tx.Exec(`INSERT INTO link_filter (subscription_id, filter_id) VALUES (?, ?) ON CONFLICT DO NOTHING`, subID, filterID).Error; execErr != nil {
-			return fmt.Errorf("orm repo: AddLink link_filter (%w)", execErr)
+		row := model.LinkFilter{SubscriptionID: subRow.ID, FilterID: filterID}
+		if juncErr := tx.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; juncErr != nil {
+			return fmt.Errorf("orm repo: AddLink link_filter (%w)", juncErr)
 		}
 	}
 	return nil
 }
 
-func getOrCreateTagID(tx *gorm.DB, value string) (int64, error) {
-	var id int64
-	if err := tx.Raw(`
-		INSERT INTO tag (value) VALUES (?)
-		ON CONFLICT (value) DO UPDATE SET value = tag.value
-		RETURNING id`, value).Scan(&id).Error; err != nil {
-		return 0, fmt.Errorf("orm repo: tag upsert (%w)", err)
+func resolveChatPK(ctx context.Context, tx *gorm.DB, telegramID int64) (int64, error) {
+	var chatRow model.Chat
+	if err := tx.WithContext(ctx).Where("telegram_id = ?", telegramID).Take(&chatRow).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, domain.ErrChatNotFound
+		}
+		return 0, fmt.Errorf("orm repo: AddLink load chat (%w)", err)
 	}
-	return id, nil
+	return chatRow.ID, nil
 }
 
-func getOrCreateFilterID(tx *gorm.DB, value string) (int64, error) {
-	var id int64
-	if err := tx.Raw(`
-		INSERT INTO filter (value) VALUES (?)
-		ON CONFLICT (value) DO UPDATE SET value = filter.value
-		RETURNING id`, value).Scan(&id).Error; err != nil {
-		return 0, fmt.Errorf("orm repo: filter upsert (%w)", err)
+func getOrInsertLink(ctx context.Context, tx *gorm.DB, url string) (*model.Link, error) {
+	var linkRow model.Link
+	switch err := tx.WithContext(ctx).Where("url = ?", url).Take(&linkRow).Error; {
+	case err == nil:
+		return &linkRow, nil
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		linkRow = model.Link{URL: url}
+		if creErr := tx.WithContext(ctx).Create(&linkRow).Error; creErr != nil {
+			if !isPGUniqueViolation(creErr) {
+				return nil, fmt.Errorf("orm repo: AddLink create link (%w)", creErr)
+			}
+			if takeErr := tx.WithContext(ctx).Where("url = ?", url).Take(&linkRow).Error; takeErr != nil {
+				return nil, fmt.Errorf("orm repo: AddLink load link after conflict (%w)", takeErr)
+			}
+		}
+		return &linkRow, nil
+	default:
+		return nil, fmt.Errorf("orm repo: AddLink load link (%w)", err)
 	}
-	return id, nil
+}
+
+func insertSubscription(ctx context.Context, tx *gorm.DB, chatPK, linkID int64) (*model.Subscription, error) {
+	var existing model.Subscription
+	switch err := tx.WithContext(ctx).Where("chat_id = ? AND link_id = ?", chatPK, linkID).Take(&existing).Error; {
+	case err == nil:
+		return nil, domain.ErrLinkAlreadyExists
+	case errors.Is(err, gorm.ErrRecordNotFound):
+	default:
+		return nil, fmt.Errorf("orm repo: AddLink load subscription (%w)", err)
+	}
+	sub := model.Subscription{ChatID: chatPK, LinkID: linkID}
+	if err := tx.WithContext(ctx).Create(&sub).Error; err != nil {
+		if isPGUniqueViolation(err) {
+			return nil, domain.ErrLinkAlreadyExists
+		}
+		return nil, fmt.Errorf("orm repo: AddLink create subscription (%w)", err)
+	}
+	return &sub, nil
+}
+
+func getOrCreateTagID(ctx context.Context, tx *gorm.DB, value string) (int64, error) {
+	var t model.Tag
+	if err := tx.WithContext(ctx).Where(model.Tag{Value: value}).FirstOrCreate(&t).Error; err != nil {
+		return 0, fmt.Errorf("orm repo: tag (%w)", err)
+	}
+	return t.ID, nil
+}
+
+func getOrCreateFilterID(ctx context.Context, tx *gorm.DB, value string) (int64, error) {
+	var f model.Filter
+	if err := tx.WithContext(ctx).Where(model.Filter{Value: value}).FirstOrCreate(&f).Error; err != nil {
+		return 0, fmt.Errorf("orm repo: filter (%w)", err)
+	}
+	return f.ID, nil
+}
+
+type subJoinValue struct {
+	SubscriptionID int64  `gorm:"column:subscription_id"`
+	Value          string `gorm:"column:value"`
+}
+type linkStamp struct {
+	ID            int64     `gorm:"column:id"`
+	URL           string    `gorm:"column:url"`
+	LastUpdatedAt time.Time `gorm:"column:last_updated_at"`
+}
+
+func subscriptionTagValues(ctx context.Context, db *gorm.DB, subIDs []int64) (map[int64][]string, error) {
+	if len(subIDs) == 0 {
+		return map[int64][]string{}, nil
+	}
+	var rows []subJoinValue
+	err := db.WithContext(ctx).Model(&model.LinkTag{}).
+		Select("link_tag.subscription_id, tag.value").
+		Joins("INNER JOIN tag ON tag.id = link_tag.tag_id").
+		Where("link_tag.subscription_id IN ?", subIDs).
+		Order("link_tag.subscription_id, tag.value").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("orm repo: subscription tags (%w)", err)
+	}
+	out := make(map[int64][]string)
+	for _, row := range rows {
+		out[row.SubscriptionID] = append(out[row.SubscriptionID], row.Value)
+	}
+	return out, nil
+}
+
+func subscriptionFilterValues(ctx context.Context, db *gorm.DB, subIDs []int64) (map[int64][]string, error) {
+	if len(subIDs) == 0 {
+		return map[int64][]string{}, nil
+	}
+	var rows []subJoinValue
+	err := db.WithContext(ctx).Model(&model.LinkFilter{}).
+		Select("link_filter.subscription_id, filter.value").
+		Joins("INNER JOIN filter ON filter.id = link_filter.filter_id").
+		Where("link_filter.subscription_id IN ?", subIDs).
+		Order("link_filter.subscription_id, filter.value").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("orm repo: subscription filters (%w)", err)
+	}
+	out := make(map[int64][]string)
+	for _, row := range rows {
+		out[row.SubscriptionID] = append(out[row.SubscriptionID], row.Value)
+	}
+	return out, nil
+}
+
+func linkByIDFromSubscriptions(ctx context.Context, db *gorm.DB, subs []model.Subscription) (map[int64]linkStamp, error) {
+	seen := make(map[int64]struct{})
+	var ids []int64
+	for _, s := range subs {
+		if _, ok := seen[s.LinkID]; !ok {
+			seen[s.LinkID] = struct{}{}
+			ids = append(ids, s.LinkID)
+		}
+	}
+	if len(ids) == 0 {
+		return map[int64]linkStamp{}, nil
+	}
+	var stamps []linkStamp
+	if err := db.WithContext(ctx).Table(model.TableNameLink).Where("id IN ?", ids).Find(&stamps).Error; err != nil {
+		return nil, fmt.Errorf("orm repo: load links by id (%w)", err)
+	}
+	out := make(map[int64]linkStamp, len(stamps))
+	for _, lk := range stamps {
+		out[lk.ID] = lk
+	}
+	return out, nil
+}
+
+func linksFromSubscriptions(ctx context.Context, db *gorm.DB, subs []model.Subscription) ([]domain.Link, error) {
+	if len(subs) == 0 {
+		return nil, nil
+	}
+	subIDs := make([]int64, len(subs))
+	for i, s := range subs {
+		subIDs[i] = s.ID
+	}
+	linkByID, err := linkByIDFromSubscriptions(ctx, db, subs)
+	if err != nil {
+		return nil, err
+	}
+	tagsBySub, err := subscriptionTagValues(ctx, db, subIDs)
+	if err != nil {
+		return nil, err
+	}
+	filtersBySub, err := subscriptionFilterValues(ctx, db, subIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Link, 0, len(subs))
+	for _, s := range subs {
+		lk := linkByID[s.LinkID]
+		tags := tagsBySub[s.ID]
+		if tags == nil {
+			tags = []string{}
+		}
+		filters := filtersBySub[s.ID]
+		if filters == nil {
+			filters = []string{}
+		}
+		dl := domain.Link{URL: lk.URL, Tags: tags, Filters: filters}
+		if !lk.LastUpdatedAt.IsZero() {
+			dl.LastUpdated = lk.LastUpdatedAt
+		}
+		out = append(out, dl)
+	}
+	return out, nil
 }
 
 func (r *Repository) GetLinks(ctx context.Context, chatID int64, limit, offset int) ([]domain.Link, error) {
-	q := `
-SELECT l.url, s.last_updated_at,
-	COALESCE((
-		SELECT array_agg(t.value ORDER BY t.value)
-		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
-		WHERE lt.subscription_id = s.id
-	), ARRAY[]::text[]),
-	COALESCE((
-		SELECT array_agg(f.value ORDER BY f.value)
-		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
-		WHERE lf.subscription_id = s.id
-	), ARRAY[]::text[])
-FROM chats c
-JOIN subscriptions s ON s.chat_id = c.id
-JOIN links l ON l.id = s.link_id
-WHERE c.telegram_id = ?
-ORDER BY s.id`
-	args := []any{chatID}
+	db := r.db.WithContext(ctx)
+	var chat model.Chat
+	if err := db.Where("telegram_id = ?", chatID).Take(&chat).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.ErrChatNotFound
+		}
+		return nil, fmt.Errorf("orm repo: GetLinks chat (%w)", err)
+	}
+	q := db.Where("chat_id = ?", chat.ID).Order("id")
 	if limit > 0 {
-		q += ` LIMIT ? OFFSET ?`
-		args = append(args, limit, offset)
+		q = q.Limit(limit).Offset(offset)
 	}
-
-	rows, err := r.db.WithContext(ctx).Raw(q, args...).Rows()
+	var subs []model.Subscription
+	if err := q.Find(&subs).Error; err != nil {
+		return nil, fmt.Errorf("orm repo: GetLinks subscriptions (%w)", err)
+	}
+	if len(subs) == 0 {
+		return []domain.Link{}, nil
+	}
+	out, err := linksFromSubscriptions(ctx, db, subs)
 	if err != nil {
-		return nil, fmt.Errorf("orm repo: GetLinks query (%w)", err)
+		return nil, fmt.Errorf("orm repo: GetLinks (%w)", err)
 	}
-	defer closeSQLRows(rows, "GetLinks")
-
-	var out []domain.Link
-	for rows.Next() {
-		lk, scanErr := scanLinkRow(rows)
-		if scanErr != nil {
-			return nil, fmt.Errorf("orm repo: GetLinks scan (%w)", scanErr)
-		}
-		out = append(out, lk)
-	}
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, fmt.Errorf("orm repo: GetLinks rows (%w)", rowsErr)
-	}
-
-	if len(out) == 0 {
-		var exists int
-		row := r.db.WithContext(ctx).Raw(`SELECT 1 FROM chats WHERE telegram_id = ? LIMIT 1`, chatID).Row()
-		if scanErr := row.Scan(&exists); scanErr != nil {
-			if errors.Is(scanErr, sql.ErrNoRows) {
-				return nil, domain.ErrChatNotFound
-			}
-			return nil, fmt.Errorf("orm repo: GetLinks chat check (%w)", scanErr)
-		}
-	}
-
 	return out, nil
 }
 
-func scanLinkRow(rows *sql.Rows) (domain.Link, error) {
-	var url string
-	var lastUp sql.NullTime
-	var tags, filters pq.StringArray
-	if scanErr := rows.Scan(&url, &lastUp, &tags, &filters); scanErr != nil {
-		return domain.Link{}, fmt.Errorf("orm repo: scan link row: %w", scanErr)
-	}
-	l := domain.Link{URL: url, Tags: []string(tags), Filters: []string(filters)}
-	if lastUp.Valid {
-		l.LastUpdated = lastUp.Time
-	}
-	return l, nil
-}
-
-func (r *Repository) GetChats(ctx context.Context, limit, offset int) (map[int64]domain.Chat, error) {
-	q := `
-SELECT c.telegram_id, l.url, s.last_updated_at,
-	COALESCE((
-		SELECT array_agg(t.value ORDER BY t.value)
-		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
-		WHERE lt.subscription_id = s.id
-	), ARRAY[]::text[]),
-	COALESCE((
-		SELECT array_agg(f.value ORDER BY f.value)
-		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
-		WHERE lf.subscription_id = s.id
-	), ARRAY[]::text[])
-FROM chats c
-LEFT JOIN subscriptions s ON s.chat_id = c.id
-LEFT JOIN links l ON l.id = s.link_id AND s.id IS NOT NULL`
-	args := []any{}
-	if limit > 0 {
-		q = `
-WITH paged AS (
-	SELECT id FROM chats ORDER BY telegram_id LIMIT ? OFFSET ?
-)
-SELECT c.telegram_id, l.url, s.last_updated_at,
-	COALESCE((
-		SELECT array_agg(t.value ORDER BY t.value)
-		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
-		WHERE lt.subscription_id = s.id
-	), ARRAY[]::text[]),
-	COALESCE((
-		SELECT array_agg(f.value ORDER BY f.value)
-		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
-		WHERE lf.subscription_id = s.id
-	), ARRAY[]::text[])
-FROM paged p
-JOIN chats c ON c.id = p.id
-LEFT JOIN subscriptions s ON s.chat_id = c.id
-LEFT JOIN links l ON l.id = s.link_id AND s.id IS NOT NULL`
-		args = append(args, limit, offset)
-	}
-	q += `
-ORDER BY c.telegram_id, s.id`
-
-	rows, err := r.db.WithContext(ctx).Raw(q, args...).Rows()
-	if err != nil {
-		return nil, fmt.Errorf("orm repo: GetChats query (%w)", err)
-	}
-	defer closeSQLRows(rows, "GetChats")
-
-	chats := make(map[int64]*domain.Chat)
-	for rows.Next() {
-		var tgID int64
-		var url *string
-		var lastUp sql.NullTime
-		var tags, filters pq.StringArray
-		if scanErr := rows.Scan(&tgID, &url, &lastUp, &tags, &filters); scanErr != nil {
-			return nil, fmt.Errorf("orm repo: GetChats scan (%w)", scanErr)
-		}
-		ch, ok := chats[tgID]
-		if !ok {
-			id := tgID
-			ch = &domain.Chat{ID: &id, Links: nil}
-			chats[tgID] = ch
-		}
-		if url != nil {
-			l := domain.Link{URL: *url, Tags: []string(tags), Filters: []string(filters)}
-			if lastUp.Valid {
-				l.LastUpdated = lastUp.Time
-			}
-			ch.Links = append(ch.Links, l)
-		}
-	}
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, fmt.Errorf("orm repo: GetChats rows (%w)", rowsErr)
-	}
-
-	out := make(map[int64]domain.Chat, len(chats))
-	for id, ch := range chats {
-		out[id] = *ch
-	}
-	return out, nil
+type listSubscribedRow struct {
+	SubID       int64     `gorm:"column:sub_id"`
+	TelegramID  int64     `gorm:"column:telegram_id"`
+	LinkURL     string    `gorm:"column:url"`
+	LastUpdated time.Time `gorm:"column:last_updated_at"`
 }
 
 func (r *Repository) ListSubscribedLinks(ctx context.Context, limit, offset int) ([]domain.SubscribedLink, error) {
-	q := `
-SELECT c.telegram_id, l.url, s.last_updated_at,
-	COALESCE((
-		SELECT array_agg(t.value ORDER BY t.value)
-		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
-		WHERE lt.subscription_id = s.id
-	), ARRAY[]::text[]),
-	COALESCE((
-		SELECT array_agg(f.value ORDER BY f.value)
-		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
-		WHERE lf.subscription_id = s.id
-	), ARRAY[]::text[])
-FROM chats c
-JOIN subscriptions s ON s.chat_id = c.id
-JOIN links l ON l.id = s.link_id
-ORDER BY c.telegram_id, s.id`
-	args := []any{}
+	db := r.db.WithContext(ctx)
+	q := db.Table("subscriptions AS s").
+		Select("s.id AS sub_id, c.telegram_id, l.url, l.last_updated_at AS last_updated_at").
+		Joins("INNER JOIN chats c ON c.id = s.chat_id").
+		Joins("INNER JOIN links l ON l.id = s.link_id").
+		Order("c.telegram_id, s.id")
 	if limit > 0 {
-		q += ` LIMIT ? OFFSET ?`
-		args = append(args, limit, offset)
+		q = q.Limit(limit).Offset(offset)
 	}
-
-	rows, err := r.db.WithContext(ctx).Raw(q, args...).Rows()
+	var rows []listSubscribedRow
+	if err := q.Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("orm repo: ListSubscribedLinks (%w)", err)
+	}
+	if len(rows) == 0 {
+		return []domain.SubscribedLink{}, nil
+	}
+	subIDs := make([]int64, len(rows))
+	for i := range rows {
+		subIDs[i] = rows[i].SubID
+	}
+	tagsBySub, err := subscriptionTagValues(ctx, db, subIDs)
 	if err != nil {
-		return nil, fmt.Errorf("orm repo: ListSubscribedLinks query (%w)", err)
+		return nil, err
 	}
-	defer closeSQLRows(rows, "ListSubscribedLinks")
-
-	var out []domain.SubscribedLink
-	for rows.Next() {
-		item, scanErr := scanSubscribedLinkRow(rows)
-		if scanErr != nil {
-			return nil, fmt.Errorf("orm repo: ListSubscribedLinks scan (%w)", scanErr)
+	filtersBySub, err := subscriptionFilterValues(ctx, db, subIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.SubscribedLink, 0, len(rows))
+	for _, row := range rows {
+		tags := tagsBySub[row.SubID]
+		if tags == nil {
+			tags = []string{}
 		}
-		out = append(out, item)
-	}
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, fmt.Errorf("orm repo: ListSubscribedLinks rows (%w)", rowsErr)
+		filters := filtersBySub[row.SubID]
+		if filters == nil {
+			filters = []string{}
+		}
+		l := domain.Link{URL: row.LinkURL, Tags: tags, Filters: filters}
+		if !row.LastUpdated.IsZero() {
+			l.LastUpdated = row.LastUpdated
+		}
+		out = append(out, domain.SubscribedLink{ChatID: row.TelegramID, Link: l})
 	}
 	return out, nil
 }
 
-func scanSubscribedLinkRow(rows *sql.Rows) (domain.SubscribedLink, error) {
-	var chatID int64
-	var url string
-	var lastUp sql.NullTime
-	var tags, filters pq.StringArray
-	if scanErr := rows.Scan(&chatID, &url, &lastUp, &tags, &filters); scanErr != nil {
-		return domain.SubscribedLink{}, fmt.Errorf("orm repo: scan subscribed link: %w", scanErr)
-	}
-	l := domain.Link{URL: url, Tags: []string(tags), Filters: []string(filters)}
-	if lastUp.Valid {
-		l.LastUpdated = lastUp.Time
-	}
-	return domain.SubscribedLink{ChatID: chatID, Link: l}, nil
-}
-
+// DeleteLink удаляет подписку и возвращает ссылку для ответа API.
+// Сначала читаются теги/фильтры и last_updated_at ссылки: после DELETE по подписке
+// каскадом удалятся link_tag/link_filter, без предварительного чтения их не вернуть.
 func (r *Repository) DeleteLink(ctx context.Context, chatID int64, linkURL string) (domain.Link, error) {
 	var out domain.Link
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		const sel = `
-SELECT s.id, l.url, s.last_updated_at,
-	COALESCE((
-		SELECT array_agg(t.value ORDER BY t.value)
-		FROM link_tag lt JOIN tag t ON t.id = lt.tag_id
-		WHERE lt.subscription_id = s.id
-	), ARRAY[]::text[]),
-	COALESCE((
-		SELECT array_agg(f.value ORDER BY f.value)
-		FROM link_filter lf JOIN filter f ON f.id = lf.filter_id
-		WHERE lf.subscription_id = s.id
-	), ARRAY[]::text[])
-FROM chats c
-JOIN subscriptions s ON s.chat_id = c.id
-JOIN links l ON l.id = s.link_id
-WHERE c.telegram_id = ? AND l.url = ?`
-
-		rows, err := tx.Raw(sel, chatID, linkURL).Rows()
-		if err != nil {
-			return fmt.Errorf("orm repo: DeleteLink select (%w)", err)
-		}
-		if !rows.Next() {
-			closeSQLRows(rows, "DeleteLink select (no row)")
-			if chatErr := ensureChatExists(tx, chatID); chatErr != nil {
-				return chatErr
+		var chat model.Chat
+		if err := tx.Where("telegram_id = ?", chatID).Take(&chat).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return domain.ErrChatNotFound
 			}
-			return domain.ErrLinkNotFound
+			return fmt.Errorf("orm repo: DeleteLink chat (%w)", err)
 		}
-		var subID int64
-		var url string
-		var lastUp sql.NullTime
-		var tags, filters pq.StringArray
-		if scanErr := rows.Scan(&subID, &url, &lastUp, &tags, &filters); scanErr != nil {
-			closeSQLRows(rows, "DeleteLink select (scan)")
-			return fmt.Errorf("orm repo: DeleteLink scan (%w)", scanErr)
+		var link model.Link
+		if err := tx.Where("url = ?", linkURL).Take(&link).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return domain.ErrLinkNotFound
+			}
+			return fmt.Errorf("orm repo: DeleteLink link (%w)", err)
 		}
-		out = domain.Link{URL: url, Tags: []string(tags), Filters: []string(filters)}
-		if lastUp.Valid {
-			out.LastUpdated = lastUp.Time
+		var sub model.Subscription
+		if err := tx.Where("chat_id = ? AND link_id = ?", chat.ID, link.ID).Take(&sub).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return domain.ErrLinkNotFound
+			}
+			return fmt.Errorf("orm repo: DeleteLink subscription (%w)", err)
 		}
-		closeSQLRows(rows, "DeleteLink select")
-		if delErr := tx.Exec(`DELETE FROM subscriptions WHERE id = ?`, subID).Error; delErr != nil {
+		tagsBySub, err := subscriptionTagValues(ctx, tx, []int64{sub.ID})
+		if err != nil {
+			return err
+		}
+		filtersBySub, err := subscriptionFilterValues(ctx, tx, []int64{sub.ID})
+		if err != nil {
+			return err
+		}
+		tags := tagsBySub[sub.ID]
+		if tags == nil {
+			tags = []string{}
+		}
+		filters := filtersBySub[sub.ID]
+		if filters == nil {
+			filters = []string{}
+		}
+		var stamp linkStamp
+		if stampErr := tx.Table(model.TableNameLink).Where("id = ?", link.ID).Take(&stamp).Error; stampErr != nil {
+			return fmt.Errorf("orm repo: DeleteLink link stamp (%w)", stampErr)
+		}
+		out = domain.Link{URL: stamp.URL, Tags: tags, Filters: filters}
+		if !stamp.LastUpdatedAt.IsZero() {
+			out.LastUpdated = stamp.LastUpdatedAt
+		}
+		if delErr := tx.Delete(&model.Subscription{}, sub.ID).Error; delErr != nil {
 			return fmt.Errorf("orm repo: DeleteLink delete (%w)", delErr)
 		}
 		return nil
@@ -440,25 +460,25 @@ WHERE c.telegram_id = ? AND l.url = ?`
 	return out, nil
 }
 
-func ensureChatExists(tx *gorm.DB, telegramID int64) error {
-	var one int
-	row := tx.Raw(`SELECT 1 FROM chats WHERE telegram_id = ? LIMIT 1`, telegramID).Row()
-	if err := row.Scan(&one); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+func (r *Repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error {
+	db := r.db.WithContext(ctx)
+	var chat model.Chat
+	if err := db.Where("telegram_id = ?", chatID).Take(&chat).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return domain.ErrChatNotFound
 		}
-		return fmt.Errorf("orm repo: ensureChatExists (%w)", err)
+		return fmt.Errorf("orm repo: UpdateLinkUpdatedAt chat (%w)", err)
 	}
-	return nil
-}
-
-func (r *Repository) UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error {
-	res := r.db.WithContext(ctx).Exec(`
-		UPDATE subscriptions s
-		SET last_updated_at = ?
-		FROM chats c, links l
-		WHERE s.chat_id = c.id AND s.link_id = l.id
-			AND c.telegram_id = ? AND l.url = ?`, t, chatID, linkURL)
+	var link model.Link
+	if err := db.Where("url = ?", linkURL).Take(&link).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.ErrLinkNotFound
+		}
+		return fmt.Errorf("orm repo: UpdateLinkUpdatedAt link (%w)", err)
+	}
+	res := db.Model(&model.Link{}).
+		Where("id = ?", link.ID).
+		Update("last_updated_at", t)
 	if res.Error != nil {
 		return fmt.Errorf("orm repo: UpdateLinkUpdatedAt (%w)", res.Error)
 	}

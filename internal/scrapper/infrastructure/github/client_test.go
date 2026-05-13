@@ -11,6 +11,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
+
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
 
 func TestCheckLink_RepoNewIssue(t *testing.T) {
@@ -23,7 +25,8 @@ func TestCheckLink_RepoNewIssue(t *testing.T) {
 			"pushed_at":  "2025-06-01T00:00:00Z",
 		})
 	})
-	mux.HandleFunc("/repos/o/r/issues", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/repos/o/r/issues", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "2025-06-01T00:00:00Z", r.URL.Query().Get("since"))
 		w.Header().Set("Content-Type", "application/json")
 		iss := []map[string]any{{
 			"html_url":   "https://github.com/o/r/issues/9",
@@ -39,7 +42,7 @@ func TestCheckLink_RepoNewIssue(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
-	out, err := c.CheckLink(context.Background(), "https://github.com/o/r", since)
+	out, err := c.CheckLink(context.Background(), domain.Link{URL: "https://github.com/o/r", LastUpdated: since})
 	require.NoError(t, err)
 	require.True(t, out.Changed)
 	require.Contains(t, out.Description, "Новая задача")
@@ -57,7 +60,8 @@ func TestCheckLink_RepoBaselineNoNotify(t *testing.T) {
 			"pushed_at":  "2026-01-01T00:00:00Z",
 		})
 	})
-	mux.HandleFunc("/repos/o/r/issues", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/repos/o/r/issues", func(w http.ResponseWriter, r *http.Request) {
+		require.Empty(t, r.URL.Query().Get("since"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode([]any{})
 	})
@@ -65,7 +69,7 @@ func TestCheckLink_RepoBaselineNoNotify(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
-	out, err := c.CheckLink(context.Background(), "https://github.com/o/r", time.Time{})
+	out, err := c.CheckLink(context.Background(), domain.Link{URL: "https://github.com/o/r"})
 	require.NoError(t, err)
 	require.False(t, out.Changed)
 	require.Equal(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), out.Latest.UTC())
@@ -80,7 +84,7 @@ func TestCheckLink_APIUnavailable(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
-	_, err := c.CheckLink(context.Background(), "https://github.com/o/r", time.Unix(1, 0))
+	_, err := c.CheckLink(context.Background(), domain.Link{URL: "https://github.com/o/r", LastUpdated: time.Unix(1, 0)})
 	require.Error(t, err)
 }
 
@@ -95,7 +99,8 @@ func TestCheckLink_PreviewTruncationInMessage(t *testing.T) {
 			"pushed_at":  "2020-01-02T00:00:00Z",
 		})
 	})
-	mux.HandleFunc("/repos/x/y/issues", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/repos/x/y/issues", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "2020-01-01T00:00:00Z", r.URL.Query().Get("since"))
 		w.Header().Set("Content-Type", "application/json")
 		iss := []map[string]any{{
 			"html_url":   "https://github.com/x/y/issues/1",
@@ -111,7 +116,7 @@ func TestCheckLink_PreviewTruncationInMessage(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
-	out, err := c.CheckLink(context.Background(), "https://github.com/x/y", since)
+	out, err := c.CheckLink(context.Background(), domain.Link{URL: "https://github.com/x/y", LastUpdated: since})
 	require.NoError(t, err)
 	require.True(t, out.Changed)
 	idx := strings.Index(out.Description, "Превью: ")

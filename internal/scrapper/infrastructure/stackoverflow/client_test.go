@@ -5,16 +5,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
 
 func TestCheckQuestion_NewAnswer(t *testing.T) {
 	since := time.Unix(100, 0)
-	mux := newSOMux(t, soFixture{
+	mux := newSOMux(t, 100, soFixture{
 		qTitle: "Как на Go?", qLastAct: 200,
 		answers: []map[string]any{{
 			"answer_id":     10,
@@ -30,7 +33,9 @@ func TestCheckQuestion_NewAnswer(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
-	out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/how", since)
+	out, err := c.CheckQuestion(context.Background(), domain.Link{
+		URL: "https://stackoverflow.com/questions/42/how", LastUpdated: since,
+	})
 	require.NoError(t, err)
 	require.True(t, out.Changed)
 	require.Contains(t, out.Description, "Как на Go?")
@@ -41,7 +46,7 @@ func TestCheckQuestion_NewAnswer(t *testing.T) {
 
 func TestCheckQuestion_NewQuestionComment(t *testing.T) {
 	since := time.Unix(100, 0)
-	mux := newSOMux(t, soFixture{
+	mux := newSOMux(t, 100, soFixture{
 		qTitle: "T", qLastAct: 300,
 		answers: nil,
 		qComments: []map[string]any{{
@@ -57,7 +62,9 @@ func TestCheckQuestion_NewQuestionComment(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
-	out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/x", since)
+	out, err := c.CheckQuestion(context.Background(), domain.Link{
+		URL: "https://stackoverflow.com/questions/42/x", LastUpdated: since,
+	})
 	require.NoError(t, err)
 	require.True(t, out.Changed)
 	require.Contains(t, out.Description, "новый комментарий к вопросу")
@@ -66,7 +73,7 @@ func TestCheckQuestion_NewQuestionComment(t *testing.T) {
 
 func TestCheckQuestion_NewAnswerComment(t *testing.T) {
 	since := time.Unix(100, 0)
-	mux := newSOMux(t, soFixture{
+	mux := newSOMux(t, 100, soFixture{
 		qTitle: "T", qLastAct: 400,
 		answers: []map[string]any{{
 			"answer_id":     99,
@@ -90,7 +97,9 @@ func TestCheckQuestion_NewAnswerComment(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
-	out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/x", since)
+	out, err := c.CheckQuestion(context.Background(), domain.Link{
+		URL: "https://stackoverflow.com/questions/42/x", LastUpdated: since,
+	})
 	require.NoError(t, err)
 	require.True(t, out.Changed)
 	require.Contains(t, out.Description, "новый комментарий к ответу")
@@ -106,8 +115,26 @@ func TestCheckQuestion_APIUnavailable(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
-	_, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/1/x", time.Time{})
+	_, err := c.CheckQuestion(context.Background(), domain.Link{URL: "https://stackoverflow.com/questions/1/x"})
 	require.Error(t, err)
+}
+
+func TestCheckQuestion_NoFromdateWhenSinceZero(t *testing.T) {
+	mux := newSOMux(t, 0, soFixture{
+		qTitle: "T", qLastAct: 500,
+		answers:   nil,
+		qComments: nil,
+		aComments: map[string][]map[string]any{},
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
+	out, err := c.CheckQuestion(context.Background(), domain.Link{
+		URL: "https://stackoverflow.com/questions/42/x",
+	})
+	require.NoError(t, err)
+	require.False(t, out.Changed)
 }
 
 type soFixture struct {
@@ -119,8 +146,17 @@ type soFixture struct {
 	aComments map[string][]map[string]any
 }
 
-func newSOMux(t *testing.T, f soFixture) http.Handler {
+func newSOMux(t *testing.T, wantFromdateUnix int64, f soFixture) http.Handler {
 	t.Helper()
+	assertFromdate := func(r *http.Request) {
+		t.Helper()
+		got := r.URL.Query().Get("fromdate")
+		if wantFromdateUnix == 0 {
+			require.Empty(t, got)
+			return
+		}
+		require.Equal(t, strconv.FormatInt(wantFromdateUnix, 10), got)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/questions/42", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.RawQuery, "site=stackoverflow") {
@@ -141,6 +177,7 @@ func newSOMux(t *testing.T, f soFixture) http.Handler {
 			http.Error(w, "bad query", http.StatusBadRequest)
 			return
 		}
+		require.Empty(t, r.URL.Query().Get("fromdate"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": f.answers})
 	})
@@ -149,6 +186,7 @@ func newSOMux(t *testing.T, f soFixture) http.Handler {
 			http.Error(w, "bad query", http.StatusBadRequest)
 			return
 		}
+		assertFromdate(r)
 		w.Header().Set("Content-Type", "application/json")
 		items := f.qComments
 		if items == nil {
@@ -165,6 +203,7 @@ func newSOMux(t *testing.T, f soFixture) http.Handler {
 			http.Error(w, "bad query", http.StatusBadRequest)
 			return
 		}
+		assertFromdate(r)
 		suffix := strings.TrimPrefix(r.URL.Path, "/answers/")
 		suffix = strings.TrimSuffix(suffix, "/comments")
 		var items []map[string]any

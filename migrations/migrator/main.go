@@ -11,7 +11,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 
-	commondb "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
+	scrapcfg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
 )
 
 func main() {
@@ -25,7 +25,7 @@ func run() int {
 		return 1
 	}
 
-	dsn := commondb.BuildPostgresDSN(
+	dsn := scrapcfg.BuildPostgresDSN(
 		config.DB.PostgresUser,
 		config.PostgresPassword,
 		config.DB.PostgresHost,

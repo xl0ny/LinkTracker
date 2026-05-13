@@ -30,7 +30,6 @@ func newSubscription(db *gorm.DB, opts ...gen.DOOption) subscription {
 	_subscription.ID = field.NewInt64(tableName, "id")
 	_subscription.ChatID = field.NewInt64(tableName, "chat_id")
 	_subscription.LinkID = field.NewInt64(tableName, "link_id")
-	_subscription.LastUpdatedAt = field.NewTime(tableName, "last_updated_at")
 	_subscription.CreatedAt = field.NewTime(tableName, "created_at")
 
 	_subscription.fillFieldMap()
@@ -41,12 +40,11 @@ func newSubscription(db *gorm.DB, opts ...gen.DOOption) subscription {
 type subscription struct {
 	subscriptionDo
 
-	ALL           field.Asterisk
-	ID            field.Int64
-	ChatID        field.Int64
-	LinkID        field.Int64
-	LastUpdatedAt field.Time
-	CreatedAt     field.Time
+	ALL       field.Asterisk
+	ID        field.Int64
+	ChatID    field.Int64
+	LinkID    field.Int64
+	CreatedAt field.Time
 
 	fieldMap map[string]field.Expr
 }
@@ -66,7 +64,6 @@ func (s *subscription) updateTableName(table string) *subscription {
 	s.ID = field.NewInt64(table, "id")
 	s.ChatID = field.NewInt64(table, "chat_id")
 	s.LinkID = field.NewInt64(table, "link_id")
-	s.LastUpdatedAt = field.NewTime(table, "last_updated_at")
 	s.CreatedAt = field.NewTime(table, "created_at")
 
 	s.fillFieldMap()
@@ -84,11 +81,10 @@ func (s *subscription) GetFieldByName(fieldName string) (field.OrderExpr, bool) 
 }
 
 func (s *subscription) fillFieldMap() {
-	s.fieldMap = make(map[string]field.Expr, 5)
+	s.fieldMap = make(map[string]field.Expr, 4)
 	s.fieldMap["id"] = s.ID
 	s.fieldMap["chat_id"] = s.ChatID
 	s.fieldMap["link_id"] = s.LinkID
-	s.fieldMap["last_updated_at"] = s.LastUpdatedAt
 	s.fieldMap["created_at"] = s.CreatedAt
 }
 

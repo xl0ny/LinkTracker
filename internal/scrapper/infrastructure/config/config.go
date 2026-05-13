@@ -6,14 +6,12 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
-	commondb "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
 )
 
@@ -42,19 +40,33 @@ func (m *AccessMode) Decode(value string) error {
 	}
 }
 
+type PostgresSettings struct {
+	DB struct {
+		PostgresUser    string `yaml:"postgres_user"`
+		PostgresDB      string `yaml:"postgres_db"`
+		PostgresHost    string `yaml:"postgres_host"`
+		PostgresPort    string `yaml:"postgres_port"`
+		PostgresSSLMode string `yaml:"postgres_ssl_mode"`
+	} `yaml:"db"`
+
+	PostgresPassword string `envconfig:"POSTGRES_PASSWORD" required:"true"`
+}
+
+type SchedulerSettings struct {
+	Interval time.Duration `yaml:"interval"`
+	Workers  int           `yaml:"workers"`
+}
+
 type Config struct {
-	commondb.Config `yaml:",inline"`
-	BotURL          string     `yaml:"bot_url"`
-	Port            string     `envconfig:"APP_SCRAPPER_PORT"`
-	AccessType      AccessMode `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
-	Batch           struct {
+	PostgresSettings `yaml:",inline"`
+	BotURL           string     `yaml:"bot_url"`
+	Port             string     `envconfig:"APP_SCRAPPER_PORT"`
+	AccessType       AccessMode `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
+	Batch            struct {
 		Size int `yaml:"size"`
 	} `yaml:"batch"`
-	Scheduler struct {
-		Interval string `yaml:"interval"`
-		Workers  int    `yaml:"workers"`
-	} `yaml:"scheduler"`
-	Logging struct {
+	Scheduler SchedulerSettings `yaml:"scheduler"`
+	Logging   struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 }
@@ -64,7 +76,7 @@ func (c *Config) GetLevel() slog.Level {
 }
 
 func (c *Config) PostgresDSN() string {
-	return commondb.BuildPostgresDSN(
+	return BuildPostgresDSN(
 		c.DB.PostgresUser,
 		c.PostgresPassword,
 		c.DB.PostgresHost,
@@ -78,98 +90,54 @@ func Load() (*Config, error) {
 	if err := godotenv.Load(); err != nil {
 		slog.Info("scrapper config: .env not loaded (optional)", slog.String("error", err.Error()))
 	}
-	var c Config
 	data, err := os.ReadFile("cmd/scrapper/config.yaml")
 	if err != nil {
-		slog.Error("scrapper config: read cmd/scrapper/config.yaml error", slog.String("error", err.Error()))
 		return nil, fmt.Errorf("config: read cmd/scrapper/config.yaml: %w", err)
 	}
+	var c Config
 	if err = yaml.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("config: parse cmd/scrapper/config.yaml: %w", err)
 	}
-	if envErr := envconfig.Process("", &c); envErr != nil {
-		return nil, fmt.Errorf("config: %w", envErr)
+	if err = envconfig.Process("", &c); err != nil {
+		return nil, fmt.Errorf("config: env: %w", err)
+	}
+	// Переопределение из окружения (Docker Compose: POSTGRES_HOST=db и т.д.)
+	if v := strings.TrimSpace(os.Getenv("POSTGRES_HOST")); v != "" {
+		c.DB.PostgresHost = v
+	}
+	if v := strings.TrimSpace(os.Getenv("POSTGRES_PORT")); v != "" {
+		c.DB.PostgresPort = v
+	}
+	if v := strings.TrimSpace(os.Getenv("POSTGRES_USER")); v != "" {
+		c.DB.PostgresUser = v
+	}
+	if v := strings.TrimSpace(os.Getenv("POSTGRES_DB")); v != "" {
+		c.DB.PostgresDB = v
+	}
+	if v := strings.TrimSpace(os.Getenv("POSTGRES_SSL_MODE")); v != "" {
+		c.DB.PostgresSSLMode = v
+	}
+	c.BotURL = strings.TrimSpace(c.BotURL)
+	if v := strings.TrimSpace(os.Getenv("APP_BOT_URL")); v != "" {
+		c.BotURL = v
 	}
 	c.BotURL = strings.TrimSpace(c.BotURL)
 	if c.BotURL == "" {
 		c.BotURL = "http://localhost:8081"
-		slog.Info("scrapper config: APP_BOT_URL default", slog.String("bot_url", c.BotURL))
 	}
-	if validateErr := validateBotURL(c.BotURL); validateErr != nil {
-		return nil, fmt.Errorf("config: APP_BOT_URL: %w", validateErr)
+	if err = validateBotURL(c.BotURL); err != nil {
+		return nil, fmt.Errorf("config: bot_url: %w", err)
 	}
 	c.Port = strings.TrimSpace(c.Port)
 	if c.Port == "" {
 		c.Port = "8080"
-		slog.Info("scrapper config: APP_SCRAPPER_PORT default", slog.String("port", c.Port))
 	}
-	rawAccess := string(c.AccessType)
 	var access AccessMode
-	if err = access.Decode(rawAccess); err != nil {
+	if err = access.Decode(string(c.AccessType)); err != nil {
 		return nil, fmt.Errorf("config: access_type: %w", err)
 	}
 	c.AccessType = access
-	if rawAccess == "" {
-		slog.Info("scrapper config: access_type default", slog.String("access_type", string(c.AccessType)))
-	}
-	normalizeBatchAndScheduler(&c)
 	return &c, nil
-}
-
-func normalizeBatchAndScheduler(c *Config) {
-	if c.Batch.Size == 0 {
-		c.Batch.Size = 100
-		slog.Info("scrapper config: batch.size default", slog.Int("batch_size", c.Batch.Size))
-	}
-	if c.Batch.Size < 50 || c.Batch.Size > 500 {
-		slog.Warn("scrapper config: invalid batch.size, using default 100", slog.Int("batch_size", c.Batch.Size))
-		c.Batch.Size = 100
-	}
-	if c.Scheduler.Workers < 1 {
-		slog.Warn("scrapper config: invalid scheduler.workers, using default 4", slog.Int("workers", c.Scheduler.Workers))
-		c.Scheduler.Workers = 4
-	}
-	if strings.TrimSpace(c.Scheduler.Interval) == "" {
-		c.Scheduler.Interval = "1m"
-		slog.Info("scrapper config: scheduler.interval default", slog.String("scheduler_interval", c.Scheduler.Interval))
-	}
-	if _, parseErr := parseSchedulerInterval(c.Scheduler.Interval); parseErr != nil {
-		slog.Warn(
-			"scrapper config: invalid scheduler.interval, using default 1m",
-			slog.String("scheduler_interval", c.Scheduler.Interval),
-			slog.String("error", parseErr.Error()),
-		)
-		c.Scheduler.Interval = "1m"
-	}
-}
-
-func (c *Config) SchedulerInterval() time.Duration {
-	d, err := parseSchedulerInterval(c.Scheduler.Interval)
-	if err != nil {
-		return time.Minute
-	}
-	return d
-}
-
-func parseSchedulerInterval(raw string) (time.Duration, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return 0, errors.New("empty interval")
-	}
-	if value, atoiErr := strconv.Atoi(raw); atoiErr == nil {
-		if value <= 0 {
-			return 0, errors.New("interval must be > 0")
-		}
-		return time.Duration(value) * time.Second, nil
-	}
-	d, durErr := time.ParseDuration(raw)
-	if durErr != nil {
-		return 0, fmt.Errorf("parse duration: %w", durErr)
-	}
-	if d <= 0 {
-		return 0, errors.New("interval must be > 0")
-	}
-	return d, nil
 }
 
 func validateBotURL(raw string) error {
@@ -184,4 +152,17 @@ func validateBotURL(raw string) error {
 		return errors.New("host is required")
 	}
 	return nil
+}
+
+func BuildPostgresDSN(user, pass, host, port, dbname, sslmode string) string {
+	u := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(user, pass),
+		Host:   fmt.Sprintf("%s:%s", host, port),
+		Path:   dbname,
+	}
+	q := u.Query()
+	q.Set("sslmode", sslmode)
+	u.RawQuery = q.Encode()
+	return u.String()
 }

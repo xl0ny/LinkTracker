@@ -12,7 +12,7 @@ import (
 	"gorm.io/gen"
 	"gorm.io/gorm"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
+	scrapcfg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
 )
 
 type envPostgres struct {
@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	dsn := db.BuildPostgresDSN(
+	dsn := scrapcfg.BuildPostgresDSN(
 		cfg.PostgresUser,
 		cfg.PostgresPassword,
 		cfg.PostgresHost,
@@ -72,7 +72,15 @@ func main() {
 	})
 
 	g.UseDB(gormDB)
-	g.ApplyBasic(g.GenerateAllTable()...)
+	g.ApplyBasic(
+		g.GenerateModel("chats"),
+		g.GenerateModel("subscriptions"),
+		g.GenerateModel("links"),
+		g.GenerateModel("tag"),
+		g.GenerateModel("filter"),
+		g.GenerateModel("link_tag"),
+		g.GenerateModel("link_filter"),
+	)
 	g.Execute()
 
 	log.Println("gormgen: models ->", modelDir)

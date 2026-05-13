@@ -16,6 +16,7 @@ help:
 	@echo "  \033[36mmake run-all\033[0m - Run bot and scrapper together (Ctrl+C stops both)"
 	@echo "  \033[36mmake compose-db\033[0m - Postgres via Docker Compose (локальная разработка по ДЗ)"
 	@echo "  \033[36mmake compose-migrate\033[0m - Применить SQL-миграции к compose-Postgres (отдельный шаг по ДЗ)"
+	@echo "  \033[36mmake compose-app\033[0m - Собрать образ и поднять scrapper + bot (профиль app; нужен APP_TELEGRAM_TOKEN, до этого make compose-migrate)"
 	@echo "  \033[36mmake lint\033[0m - Run golangci-lint"
 
 .PHONY: build
@@ -90,9 +91,9 @@ run-db-migration:
 compose-db:
 	@docker compose up -d db
 
-.PHONY: compose-migrate
-compose-migrate:
-	@docker compose --profile migrate run --rm migrator
+.PHONY: compose-app
+compose-app:
+	@docker compose --profile app up -d --build
 
 .PHONY: run-gorm-models-generation
 run-gorm-models-generation:

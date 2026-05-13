@@ -12,8 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	contracts "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/checker"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/client"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/orm"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/pgrepo"
@@ -80,7 +80,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		notifier,
 		cfg.Batch.Size,
 		cfg.Scheduler.Workers,
-		cfg.SchedulerInterval(),
+		cfg.Scheduler.Interval,
 	)
 	go sch.Run(ctx)
 

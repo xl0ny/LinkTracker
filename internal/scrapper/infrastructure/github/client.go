@@ -59,7 +59,7 @@ func parseGitHubRef(raw string) (ghRef, error) {
 	if err != nil {
 		return ghRef{}, fmt.Errorf("invalid url: %w", err)
 	}
-	if u.Host != "github.com" {
+	if u.Host != "github.com" && u.Host != "www.github.com" {
 		return ghRef{}, errors.New("not a github url")
 	}
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
@@ -118,11 +118,12 @@ type commentItem struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func (c *Client) CheckLink(ctx context.Context, pageURL string, since time.Time) (domain.LinkCheckOutcome, error) {
-	ref, err := parseGitHubRef(pageURL)
+func (c *Client) CheckLink(ctx context.Context, link domain.Link) (domain.LinkCheckOutcome, error) {
+	ref, err := parseGitHubRef(link.URL)
 	if err != nil {
 		return domain.LinkCheckOutcome{}, err
 	}
+	since := link.LastUpdated
 	if ref.IsRepo {
 		return c.checkRepo(ctx, ref, since)
 	}
@@ -130,7 +131,7 @@ func (c *Client) CheckLink(ctx context.Context, pageURL string, since time.Time)
 }
 
 func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.Time, err error) {
-	out, err := c.CheckLink(ctx, repoURL, time.Time{})
+	out, err := c.CheckLink(ctx, domain.Link{URL: repoURL})
 	if err != nil {
 		return time.Time{}, fmt.Errorf("github CheckUpdated: %w", err)
 	}
@@ -138,7 +139,16 @@ func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.
 }
 
 func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (domain.LinkCheckOutcome, error) {
-	apiURL := fmt.Sprintf("%s/repos/%s/%s/issues?state=all&sort=created&direction=desc&per_page=100", c.baseURL, ref.Owner, ref.Repo)
+	q := url.Values{}
+	q.Set("state", "all")
+	q.Set("sort", "created")
+	q.Set("direction", "desc")
+	q.Set("per_page", "100")
+	if !since.IsZero() {
+		// https://docs.github.com/en/rest/issues/issues#list-repository-issues — только issues, обновлённые не раньше since
+		q.Set("since", since.UTC().Format(time.RFC3339))
+	}
+	apiURL := fmt.Sprintf("%s/repos/%s/%s/issues?%s", c.baseURL, ref.Owner, ref.Repo, q.Encode())
 	var list []issueItem
 	if err := c.getJSON(ctx, apiURL, &list); err != nil {
 		return domain.LinkCheckOutcome{}, fmt.Errorf("list issues: %w", err)

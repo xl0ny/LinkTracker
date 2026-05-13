@@ -12,11 +12,11 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 
-	commondb "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
+	scrapcfg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
 )
 
 type Config struct {
-	commondb.Config `yaml:",inline"`
+	scrapcfg.PostgresSettings `yaml:",inline"`
 	Migrations      struct {
 		Dir           string `yaml:"dir"`
 		TargetVersion *int   `yaml:"target_version,omitempty"`
