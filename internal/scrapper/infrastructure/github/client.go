@@ -138,7 +138,7 @@ func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.
 	return out.Latest, nil
 }
 
-func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (domain.LinkCheckOutcome, error) {
+func repoIssuesListURL(baseURL string, ref ghRef, since time.Time) string {
 	q := url.Values{}
 	q.Set("state", "all")
 	q.Set("sort", "created")
@@ -148,23 +148,15 @@ func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (dom
 		// https://docs.github.com/en/rest/issues/issues#list-repository-issues — только issues, обновлённые не раньше since
 		q.Set("since", since.UTC().Format(time.RFC3339))
 	}
-	apiURL := fmt.Sprintf("%s/repos/%s/%s/issues?%s", c.baseURL, ref.Owner, ref.Repo, q.Encode())
-	var list []issueItem
-	if err := c.getJSON(ctx, apiURL, &list); err != nil {
-		return domain.LinkCheckOutcome{}, fmt.Errorf("list issues: %w", err)
-	}
+	return fmt.Sprintf("%s/repos/%s/%s/issues?%s", baseURL, ref.Owner, ref.Repo, q.Encode())
+}
 
-	var repo repoInfo
-	repoURL := fmt.Sprintf("%s/repos/%s/%s", c.baseURL, ref.Owner, ref.Repo)
-	if err := c.getJSON(ctx, repoURL, &repo); err != nil {
-		return domain.LinkCheckOutcome{}, fmt.Errorf("repo info: %w", err)
-	}
-
+func repoActivityWatermark(repo repoInfo, issues []issueItem) time.Time {
 	watermark := repo.UpdatedAt
 	if repo.PushedAt.After(watermark) {
 		watermark = repo.PushedAt
 	}
-	for _, it := range list {
+	for _, it := range issues {
 		if it.CreatedAt.After(watermark) {
 			watermark = it.CreatedAt
 		}
@@ -172,14 +164,13 @@ func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (dom
 			watermark = it.UpdatedAt
 		}
 	}
+	return watermark
+}
 
-	if since.IsZero() {
-		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
-	}
-
+func newestIssueCreatedAfter(issues []issueItem, since time.Time) *issueItem {
 	var newest *issueItem
-	for i := range list {
-		it := &list[i]
+	for i := range issues {
+		it := &issues[i]
 		if !it.CreatedAt.After(since) {
 			continue
 		}
@@ -187,24 +178,45 @@ func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (dom
 			newest = it
 		}
 	}
-	if newest == nil {
-		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
-	}
+	return newest
+}
 
+func linkCheckOutcomeFromNewRepoIssue(it *issueItem) domain.LinkCheckOutcome {
 	kind := "Issue"
-	link := newest.HTMLURL
-	if newest.PullRequest != nil {
+	link := it.HTMLURL
+	if it.PullRequest != nil {
 		kind = "PR"
-		if newest.PullRequest.HTMLURL != "" {
-			link = newest.PullRequest.HTMLURL
+		if it.PullRequest.HTMLURL != "" {
+			link = it.PullRequest.HTMLURL
 		}
 	}
-	desc := formatGitHubUpdate(kind, newest.Title, newest.User.Login, newest.CreatedAt, newest.Body, link)
+	desc := formatGitHubUpdate(kind, it.Title, it.User.Login, it.CreatedAt, it.Body, link)
 	return domain.LinkCheckOutcome{
 		Changed:     true,
-		Latest:      newest.CreatedAt,
+		Latest:      it.CreatedAt,
 		Description: desc,
-	}, nil
+	}
+}
+
+func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (domain.LinkCheckOutcome, error) {
+	apiURL := repoIssuesListURL(c.baseURL, ref, since)
+	var list []issueItem
+	if err := c.getJSON(ctx, apiURL, &list); err != nil {
+		return domain.LinkCheckOutcome{}, fmt.Errorf("list issues: %w", err)
+	}
+	var repo repoInfo
+	repoURL := fmt.Sprintf("%s/repos/%s/%s", c.baseURL, ref.Owner, ref.Repo)
+	if err := c.getJSON(ctx, repoURL, &repo); err != nil {
+		return domain.LinkCheckOutcome{}, fmt.Errorf("repo info: %w", err)
+	}
+	watermark := repoActivityWatermark(repo, list)
+	if since.IsZero() {
+		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
+	}
+	if newest := newestIssueCreatedAfter(list, since); newest != nil {
+		return linkCheckOutcomeFromNewRepoIssue(newest), nil
+	}
+	return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
 }
 
 func (c *Client) checkIssueOrPull(ctx context.Context, ref ghRef, since time.Time) (domain.LinkCheckOutcome, error) {

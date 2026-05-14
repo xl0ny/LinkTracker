@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
@@ -26,7 +27,7 @@ func TestCheckLink_RepoNewIssue(t *testing.T) {
 		})
 	})
 	mux.HandleFunc("/repos/o/r/issues", func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "2025-06-01T00:00:00Z", r.URL.Query().Get("since"))
+		assert.Equal(t, "2025-06-01T00:00:00Z", r.URL.Query().Get("since"))
 		w.Header().Set("Content-Type", "application/json")
 		iss := []map[string]any{{
 			"html_url":   "https://github.com/o/r/issues/9",
@@ -61,7 +62,7 @@ func TestCheckLink_RepoBaselineNoNotify(t *testing.T) {
 		})
 	})
 	mux.HandleFunc("/repos/o/r/issues", func(w http.ResponseWriter, r *http.Request) {
-		require.Empty(t, r.URL.Query().Get("since"))
+		assert.Empty(t, r.URL.Query().Get("since"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode([]any{})
 	})
@@ -100,7 +101,7 @@ func TestCheckLink_PreviewTruncationInMessage(t *testing.T) {
 		})
 	})
 	mux.HandleFunc("/repos/x/y/issues", func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "2020-01-01T00:00:00Z", r.URL.Query().Get("since"))
+		assert.Equal(t, "2020-01-01T00:00:00Z", r.URL.Query().Get("since"))
 		w.Header().Set("Content-Type", "application/json")
 		iss := []map[string]any{{
 			"html_url":   "https://github.com/x/y/issues/1",

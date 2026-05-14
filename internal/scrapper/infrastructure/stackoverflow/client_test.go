@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
@@ -152,10 +153,10 @@ func newSOMux(t *testing.T, wantFromdateUnix int64, f soFixture) http.Handler {
 		t.Helper()
 		got := r.URL.Query().Get("fromdate")
 		if wantFromdateUnix == 0 {
-			require.Empty(t, got)
+			assert.Empty(t, got)
 			return
 		}
-		require.Equal(t, strconv.FormatInt(wantFromdateUnix, 10), got)
+		assert.Equal(t, strconv.FormatInt(wantFromdateUnix, 10), got)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/questions/42", func(w http.ResponseWriter, r *http.Request) {
@@ -177,7 +178,7 @@ func newSOMux(t *testing.T, wantFromdateUnix int64, f soFixture) http.Handler {
 			http.Error(w, "bad query", http.StatusBadRequest)
 			return
 		}
-		require.Empty(t, r.URL.Query().Get("fromdate"))
+		assert.Empty(t, r.URL.Query().Get("fromdate"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"items": f.answers})
 	})

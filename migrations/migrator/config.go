@@ -17,7 +17,7 @@ import (
 
 type Config struct {
 	scrapcfg.PostgresSettings `yaml:",inline"`
-	Migrations      struct {
+	Migrations                struct {
 		Dir           string `yaml:"dir"`
 		TargetVersion *int   `yaml:"target_version,omitempty"`
 	} `yaml:"migrations"`
