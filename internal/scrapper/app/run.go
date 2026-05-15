@@ -24,6 +24,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/outbox"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/stackoverflow"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/swagger"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/valkey"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/handler"
 )
@@ -51,23 +52,15 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	defer repo.Close()
 
-	usecase := application.NewChatUC(repo, repo)
-	h := handler.NewHandler(usecase)
+	uc, closeCache, err := buildUseCase(ctx, repo, cfg)
+	if err != nil {
+		return err
+	}
+	defer closeCache()
+
+	h := handler.NewHandler(uc)
 	r := chi.NewRouter()
-
-	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/x-yaml")
-		if _, werr := w.Write(scrapperapi.ContractYAML); werr != nil {
-			slog.Error("scrapper run: swagger yaml write error", slog.String("error", werr.Error()))
-		}
-	})
-	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if _, werr := w.Write([]byte(swagger.SwaggerHTML)); werr != nil {
-			slog.Error("scrapper run: swagger html write error", slog.String("error", werr.Error()))
-		}
-	})
-
+	mountSwagger(r)
 	api.HandlerFromMux(h, r)
 
 	botAPI, err := botclient.NewClientWithResponses(cfg.BotURL)
@@ -104,22 +97,63 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	go sch.Run(ctx)
 
-	srv := &http.Server{Addr: ":" + cfg.Port, Handler: r}
+	return runHTTPServer(ctx, r, cfg.Port)
+}
+
+func runHTTPServer(ctx context.Context, r chi.Router, port string) error {
+	srv := &http.Server{Addr: ":" + port, Handler: r}
 	go func() {
-		if errSrv := srv.ListenAndServe(); errSrv != nil && errSrv != http.ErrServerClosed {
+		if errSrv := srv.ListenAndServe(); errSrv != nil && !errors.Is(errSrv, http.ErrServerClosed) {
 			slog.Error("scrapper run: http server error", slog.String("error", errSrv.Error()))
 		}
 	}()
-	swaggerUI := fmt.Sprintf("http://127.0.0.1:%s/swagger", cfg.Port)
 	slog.Info("scrapper run: http server started",
-		slog.String("port", cfg.Port),
-		slog.String("swagger_ui", swaggerUI))
+		slog.String("port", port),
+		slog.String("swagger_ui", fmt.Sprintf("http://127.0.0.1:%s/swagger", port)))
 
 	<-ctx.Done()
 	if shutErr := srv.Shutdown(context.Background()); shutErr != nil {
 		return fmt.Errorf("shutdown: %w", shutErr)
 	}
 	return nil
+}
+
+func mountSwagger(r chi.Router) {
+	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/x-yaml")
+		if _, werr := w.Write(scrapperapi.ContractYAML); werr != nil {
+			slog.Error("scrapper run: swagger yaml write error", slog.String("error", werr.Error()))
+		}
+	})
+	r.Get("/swagger", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if _, werr := w.Write([]byte(swagger.SwaggerHTML)); werr != nil {
+			slog.Error("scrapper run: swagger html write error", slog.String("error", werr.Error()))
+		}
+	})
+}
+
+func buildUseCase(ctx context.Context, repo Repository, cfg *config.Config) (handler.UseCase, func(), error) {
+	base := application.NewChatUC(repo, repo)
+	if !cfg.Valkey.Enabled {
+		slog.Info("scrapper run: valkey cache disabled")
+		return base, func() {}, nil
+	}
+	cache, err := valkey.New(ctx, valkey.Config{
+		Addrs:       cfg.Valkey.Addrs,
+		Password:    cfg.Valkey.Password,
+		KeyPrefix:   cfg.Valkey.KeyPrefix,
+		TTL:         cfg.Valkey.TTL,
+		ClientCache: cfg.Valkey.ClientCache.Enabled,
+		CSCTTL:      cfg.Valkey.ClientCache.TTL,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("scrapper: valkey cache init: %w", err)
+	}
+	slog.Info("scrapper run: valkey cache enabled",
+		slog.Bool("client_cache", cfg.Valkey.ClientCache.Enabled),
+		slog.Int("addrs", len(cfg.Valkey.Addrs)))
+	return application.NewCachedChatUC(base, cache), cache.Close, nil
 }
 
 func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.ClientWithResponses, cfg *config.Config) (application.BotNotifier, *outbox.Publisher, error) {

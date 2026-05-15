@@ -48,6 +48,18 @@ type Config struct {
 			Outbox               config.KafkaOutbox `yaml:"outbox"`
 		} `yaml:"producer"`
 	} `yaml:"kafka"`
+
+	Valkey struct {
+		Enabled     bool          `yaml:"enabled"`
+		Addrs       []string      `yaml:"addrs"`
+		Password    string        `envconfig:"VALKEY_PASSWORD"`
+		KeyPrefix   string        `yaml:"key_prefix"`
+		TTL         time.Duration `yaml:"ttl"`
+		ClientCache struct {
+			Enabled bool          `yaml:"enabled"`
+			TTL     time.Duration `yaml:"ttl"`
+		} `yaml:"client_cache"`
+	} `yaml:"valkey"`
 }
 
 func (c *Config) GetLevel() slog.Level {

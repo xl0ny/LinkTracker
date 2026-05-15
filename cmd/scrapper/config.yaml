@@ -46,3 +46,15 @@ kafka:
       max_attempts: 5                        # после стольких неудачных попыток отправки строка получает status='failed' и больше не ретраится
       base_backoff: "500ms"                  # начальная задержка экспоненциального бэкоффа между ретраями одной строки
       max_backoff: "1m"                      # верхняя граница бэкоффа; чтобы 5-я попытка не ушла на сутки
+
+valkey:
+  enabled: true
+  addrs:
+    - "localhost:17000"
+    - "localhost:17001"
+    - "localhost:17002"
+  key_prefix: "scrapper:links:"
+  ttl: "5m"
+  client_cache:
+    enabled: false
+    ttl: "1m"

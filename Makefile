@@ -27,6 +27,10 @@ help:
 	@echo "  \033[36mmake compose-kafka-logs\033[0m - tail -f логов всех брокеров"
 	@echo "  \033[36mmake compose-kafka-topics\033[0m - Список топиков в кластере"
 	@echo "  \033[36mmake avro-registrate\033[0m - Register Avro schemas in Schema Registry"
+	@echo "  \033[36mmake compose-valkey\033[0m - Поднять Valkey кластер (3 ноды)"
+	@echo "  \033[36mmake compose-valkey-down\033[0m / \033[36mcompose-valkey-purge\033[0m - Остановить / удалить кластер"
+	@echo "  \033[36mmake loadtest-seed\033[0m - Засеять Postgres данными для нагрузочных тестов"
+	@echo "  \033[36mmake loadtest-run SCENARIO=name\033[0m - Прогнать нагрузочный тест и дописать отчёт"
 	@echo "  \033[36mmake lint\033[0m - Run golangci-lint"
 
 .PHONY: build
@@ -55,7 +59,7 @@ test:
 
 .PHONY: test-integration
 test-integration:
-	@go test -tags=integration -count=1 -v ./internal/scrapper/infrastructure/db/... ./internal/bot/transport/kafka/...
+	@go test -tags=integration -count=1 -v ./internal/scrapper/infrastructure/db/... ./internal/bot/transport/kafka/... ./internal/scrapper/infrastructure/valkey/...
 
 .PHONY: lint
 lint:
@@ -71,6 +75,8 @@ god:
 	@$(MAKE) compose-migrate
 	@echo "\033[36mgod:\033[0m Redis..."
 	@docker compose up -d redis
+	@echo "\033[36mgod:\033[0m Valkey cluster (3 nodes)..."
+	@$(MAKE) compose-valkey
 	@echo "\033[36mgod:\033[0m Kafka + Schema Registry + topics"
 	@$(MAKE) compose-kafka
 	@echo "\033[36mgod:\033[0m ждём Schema Registry ($(SCHEMA_REGISTRY_URL))..."
@@ -191,3 +197,35 @@ avro-registrate:
 	@echo "Avro schemas registered successfully"
 
 avro-register: avro-registrate
+
+VALKEY_SERVICE := valkey-cluster
+
+.PHONY: compose-valkey
+compose-valkey:
+	@echo "Starting Valkey cluster (valkey/valkey:8-alpine, ports 17000-17002)"
+	@docker compose up -d $(VALKEY_SERVICE)
+
+.PHONY: compose-valkey-down
+compose-valkey-down:
+	@echo "Stopping Valkey cluster"
+	@docker compose stop $(VALKEY_SERVICE) || true
+	@docker compose rm -f $(VALKEY_SERVICE) || true
+
+.PHONY: compose-valkey-purge
+compose-valkey-purge:
+	@echo "Purging Valkey cluster"
+	@docker compose stop $(VALKEY_SERVICE) || true
+	@docker compose rm -f $(VALKEY_SERVICE) || true
+
+SCENARIO ?= unknown
+OUT      ?=
+
+.PHONY: loadtest-seed
+loadtest-seed:
+	@echo "Seeding Postgres (see loadtest/config.yaml)"
+	@go run ./loadtest/seed
+
+.PHONY: loadtest-run
+loadtest-run:
+	@echo "Running load test [scenario=$(SCENARIO)] (see loadtest/config.yaml)"
+	@go run ./loadtest/run -scenario "$(SCENARIO)" $(if $(OUT),-out "$(OUT)",)

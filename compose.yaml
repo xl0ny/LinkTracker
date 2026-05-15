@@ -198,6 +198,46 @@ services:
       timeout: 3s
       retries: 5
 
+  valkey-cluster:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-cluster
+    restart: unless-stopped
+    ports:
+      - "17000:17000"
+      - "17001:17001"
+      - "17002:17002"
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        AUTH=""
+        if [ -n "$$VALKEY_PASSWORD" ]; then AUTH="--requirepass $$VALKEY_PASSWORD"; fi
+        valkey-server --port 17000 --bind 0.0.0.0 --save "" --appendonly no \
+          --cluster-enabled yes --cluster-config-file nodes-17000.conf $$AUTH &
+        valkey-server --port 17001 --bind 0.0.0.0 --save "" --appendonly no \
+          --cluster-enabled yes --cluster-config-file nodes-17001.conf $$AUTH &
+        valkey-server --port 17002 --bind 0.0.0.0 --save "" --appendonly no \
+          --cluster-enabled yes --cluster-config-file nodes-17002.conf $$AUTH &
+        sleep 2
+        CLI_AUTH=""
+        if [ -n "$$VALKEY_PASSWORD" ]; then CLI_AUTH="-a $$VALKEY_PASSWORD"; fi
+        while ! valkey-cli $$CLI_AUTH --cluster create 127.0.0.1:17000 127.0.0.1:17001 127.0.0.1:17002 --cluster-yes; do
+          sleep 1
+        done
+        wait
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'CLI=""; [ -n "$$VALKEY_PASSWORD" ] && CLI="-a $$VALKEY_PASSWORD"; valkey-cli $$CLI -p 17000 cluster info | grep -q cluster_state:ok',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
 volumes:
   pgdata:
   kafka1-data:
