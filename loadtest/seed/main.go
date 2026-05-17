@@ -20,7 +20,7 @@ func main() {
 		log.Fatalf("seed: %v", err)
 	}
 
-	if err := run(cfg.Seed.DSN, cfg.Seed); err != nil {
+	if err = run(cfg.Seed.DSN, cfg.Seed); err != nil {
 		log.Fatalf("seed: %v", err)
 	}
 }

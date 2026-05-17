@@ -29,7 +29,7 @@ const (
 )
 
 const (
-	reportFilePerms = 0o644
+	reportFilePerms    = 0o644
 	p50Percent         = 50
 	p99Percent         = 99
 	hundredPercent     = 100
@@ -126,7 +126,7 @@ func main() {
 	fmt.Println(md)
 
 	if opts.Output != "" {
-		if err := appendReport(opts.Output, md); err != nil {
+		if err = appendReport(opts.Output, md); err != nil {
 			log.Printf("loadtest: %v", err)
 			return
 		}
@@ -323,4 +323,3 @@ func classifyStatuses(status map[int]int) (c4xx, c5xx, other int) {
 	}
 	return c4xx, c5xx, other
 }
-
