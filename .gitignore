@@ -28,8 +28,6 @@ go.work.sum
 # env file
 .env
 
-task.txt
-
 # gomodcache
 .gomodcache/
 
