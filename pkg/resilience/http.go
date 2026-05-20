@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/avast/retry-go/v4"
@@ -16,6 +17,9 @@ const (
 	defaultHTTPTimeout = 30 * time.Second
 	defaultCBInterval  = 10 * time.Second
 	failureRatePercent = 100
+
+	backoffConstant    = "constant"
+	backoffExponential = "exponential"
 )
 
 type retryableStatusError struct {
@@ -66,6 +70,24 @@ func (t retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		retryable[code] = struct{}{}
 	}
 
+	opts := []retry.Option{
+		retry.Context(req.Context()),
+		retry.Attempts(attempts),
+		retry.Delay(delay),
+		retry.DelayType(delayTypeFor(t.cfg.Backoff)),
+		retry.LastErrorOnly(true),
+		retry.RetryIf(func(err error) bool {
+			var statusErr *retryableStatusError
+			if errors.As(err, &statusErr) {
+				return true
+			}
+			return err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+		}),
+	}
+	if t.cfg.MaxDelay > 0 {
+		opts = append(opts, retry.MaxDelay(t.cfg.MaxDelay))
+	}
+
 	var resp *http.Response
 	err := retry.Do(
 		func() error {
@@ -85,18 +107,7 @@ func (t retryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 			resp = r
 			return nil
 		},
-		retry.Context(req.Context()),
-		retry.Attempts(attempts),
-		retry.Delay(delay),
-		retry.DelayType(retry.FixedDelay),
-		retry.LastErrorOnly(true),
-		retry.RetryIf(func(err error) bool {
-			var statusErr *retryableStatusError
-			if errors.As(err, &statusErr) {
-				return true
-			}
-			return err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
-		}),
+		opts...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("retry round trip: %w", err)
@@ -173,4 +184,15 @@ func newCircuitBreaker(name string, cfg CircuitBreakerConfig) *gobreaker.Circuit
 
 func CircuitBreaker(name string, cfg Config) *gobreaker.CircuitBreaker {
 	return newCircuitBreaker(name, cfg.CircuitBreaker)
+}
+
+func delayTypeFor(name string) retry.DelayTypeFunc {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case backoffExponential:
+		return retry.BackOffDelay
+	case "", backoffConstant:
+		return retry.FixedDelay
+	default:
+		return retry.FixedDelay
+	}
 }

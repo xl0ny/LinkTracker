@@ -9,8 +9,8 @@ import (
 
 	kafkago "github.com/segmentio/kafka-go"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
 )
 
 // maxBackoffShift caps exponential backoff exponent to avoid overflowing time.Duration when shifting.

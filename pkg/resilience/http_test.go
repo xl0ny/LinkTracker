@@ -123,6 +123,70 @@ func TestHTTP_retryConstantBackoff(t *testing.T) {
 	}
 }
 
+func TestHTTP_retryExponentialBackoff(t *testing.T) {
+	var calls atomic.Int32
+	var prev time.Time
+	var gaps []time.Duration
+	base := 60 * time.Millisecond
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		now := time.Now()
+		if calls.Add(1) > 1 && !prev.IsZero() {
+			gaps = append(gaps, now.Sub(prev))
+		}
+		prev = now
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := testConfig()
+	cfg.HTTP.Timeout = 2 * time.Second
+	cfg.Retry.Delay = base
+	cfg.Retry.MaxAttempts = 4
+	cfg.Retry.Backoff = "exponential"
+	cfg.Retry.MaxDelay = 0
+	client := NewHTTPClient("exp-backoff-test", cfg)
+
+	_, err := client.Get(srv.URL)
+	require.Error(t, err)
+	require.Equal(t, int32(4), calls.Load())
+	require.GreaterOrEqual(t, len(gaps), 2)
+	require.Greater(t, gaps[1], gaps[0])
+	require.GreaterOrEqual(t, gaps[1], base*2-15*time.Millisecond)
+}
+
+func TestHTTP_exponentialBackoffMaxDelay(t *testing.T) {
+	var calls atomic.Int32
+	var prev time.Time
+	var gaps []time.Duration
+	base := 40 * time.Millisecond
+	maxDelay := 50 * time.Millisecond
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		now := time.Now()
+		if calls.Add(1) > 1 && !prev.IsZero() {
+			gaps = append(gaps, now.Sub(prev))
+		}
+		prev = now
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := testConfig()
+	cfg.HTTP.Timeout = 2 * time.Second
+	cfg.Retry.Delay = base
+	cfg.Retry.MaxDelay = maxDelay
+	cfg.Retry.MaxAttempts = 4
+	cfg.Retry.Backoff = "exponential"
+	client := NewHTTPClient("exp-cap-test", cfg)
+
+	_, err := client.Get(srv.URL)
+	require.Error(t, err)
+	for _, gap := range gaps {
+		require.LessOrEqual(t, gap, maxDelay+30*time.Millisecond)
+	}
+}
+
 func TestRateLimit_exceedsLimit(t *testing.T) {
 	cfg := RateLimitConfig{RPS: 2, Burst: 2}
 	mw := RateLimitMiddleware(cfg)

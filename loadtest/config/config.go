@@ -8,7 +8,10 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-const DefaultPath = "loadtest/config.yaml"
+const (
+	DefaultPath = "loadtest/config.yaml"
+	vusPerCPU   = 2
+)
 
 type Config struct {
 	Run  Run  `yaml:"run"`

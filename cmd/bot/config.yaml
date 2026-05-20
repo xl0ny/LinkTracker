@@ -32,6 +32,8 @@ resilience:
   retry:
     max_attempts: 3
     delay: "200ms"
+    backoff: "constant"   # constant | exponential
+    max_delay: "0s"       # верхняя граница для exponential (0 = без ограничения)
     retryable_statuses: [500, 502, 503, 504]
   circuit_breaker:
     sliding_window_size: 10

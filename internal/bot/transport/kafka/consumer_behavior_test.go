@@ -15,7 +15,7 @@ import (
 	"github.com/linkedin/goavro/v2"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/require"
-	commonreg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/avro/registry"
+	commonreg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/avro/registry"
 )
 
 func TestRetryBusiness_stopsAfterMaxRetries(t *testing.T) {

@@ -16,6 +16,8 @@ type HTTPConfig struct {
 type RetryConfig struct {
 	MaxAttempts       uint          `yaml:"max_attempts"`
 	Delay             time.Duration `yaml:"delay"`
+	MaxDelay          time.Duration `yaml:"max_delay"`
+	Backoff           string        `yaml:"backoff"`
 	RetryableStatuses []int         `yaml:"retryable_statuses"`
 }
 

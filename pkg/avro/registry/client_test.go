@@ -52,7 +52,7 @@ func TestClient_RegisterAndCodecForID(t *testing.T) {
 func TestNewEncoder_integrationWithMockSR(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
+	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
 	updatePath := filepath.Join(root, "schemas", "avro", "link_update_event.avsc")
 	failedPath := filepath.Join(root, "schemas", "avro", "failed_links_event.avsc")
 	_, err := os.Stat(updatePath)

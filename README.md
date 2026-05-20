@@ -24,24 +24,9 @@ Telegram-бот, который отслеживает изменения на �
 
 6. Запуск приложений: `make run-all` или `make run-bot` / `make run-scrapper`.
 
-## ДЗ 1: надёжность (timeout, retry, circuit breaker, rate limit, fallback)
 
-Параметры в `cmd/scrapper/config.yaml` и `cmd/bot/config.yaml` (секция `resilience`):
+Тесты: `go test ./pkg/resilience/... ./internal/scrapper/infrastructure/notifier/...`
 
-- **HTTP timeout** — `resilience.http.timeout`
-- **Retry** (constant backoff) — `resilience.retry.max_attempts`, `delay`, `retryable_statuses`
-- **Circuit breaker** (sliding window) — `resilience.circuit_breaker.*`
-- **Rate limiting** (по IP, HTTP 429) — `resilience.rate_limit` на публичных endpoint scrapper
-- **Fallback уведомлений** — HTTP к боту, при ошибке Kafka (`kafka.enabled: true`)
+### Бонус: exponential backoff (выполнен)
 
-Тесты: `go test ./internal/common/resilience/... ./internal/scrapper/infrastructure/notifier/...`
-
-## ДЗ 6 допы (все сделаны кроме кросс-ревью)
-
-
-- Client-Side Caching через `github.com/valkey-io/valkey-go` (`DoCache`).
-      Включается в конфиге `valkey.client_cache.enabled: true`, локальный TTL — `client_cache.ttl`.
-- Нагрузочные тесты: `loadtest/seed` (наполнение Postgres ~100K подписок) и
-      `loadtest/run` (VUs, ramp-up + stage, перцентили, статусы, ошибки). Отчёт —
-      [`loadtest/REPORT.md`](loadtest/REPORT.md). Здесь инструкция по запуску + отчет.
-
+Переключается через конфиг, по умолчанию остаётся constant.
