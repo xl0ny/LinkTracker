@@ -54,7 +54,49 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		})
 	}
 
+	srv, err := startHTTPServer(ctx, cfg, bot)
+	if err != nil {
+		return err
+	}
+
+	<-ctx.Done()
+
+	shutdownErr := srv.Shutdown(context.Background())
+	if shutdownErr != nil {
+		slog.Error("run: server graceful shutdown error", slog.String("error", shutdownErr.Error()))
+	}
+	slog.Info("run: shutting down")
+	wg.Wait()
+	return nil
+}
+
+func startHTTPServer(ctx context.Context, cfg *config.Config, sender bothttp.MessageSender) (*http.Server, error) {
 	r := chi.NewRouter()
+	mountSwagger(r)
+
+	updatesHandler := bothttp.NewHandler(sender)
+	botapi.HandlerFromMux(updatesHandler, r)
+
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", ":"+cfg.BotPort)
+	if err != nil {
+		slog.Error("run: http server bind error", slog.String("error", err.Error()), slog.String("port", cfg.BotPort))
+		return nil, fmt.Errorf("listen: %w", err)
+	}
+
+	srv := &http.Server{Handler: r}
+	go func() {
+		if errSrv := srv.Serve(ln); errSrv != nil && errSrv != http.ErrServerClosed {
+			slog.Error("run: http server serve error", slog.String("error", errSrv.Error()))
+		}
+	}()
+	slog.Info("run: http server started",
+		slog.String("port", cfg.BotPort),
+		slog.String("swagger_ui", fmt.Sprintf("http://127.0.0.1:%s/swagger", cfg.BotPort)))
+	return srv, nil
+}
+
+func mountSwagger(r chi.Router) {
 	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/x-yaml")
 		if _, errWrite := w.Write(contracts.Bot); errWrite != nil {
@@ -67,34 +109,4 @@ func Run(ctx context.Context, cfg *config.Config) error {
 			slog.Error("run: swagger html write error", slog.String("error", errWrite.Error()))
 		}
 	})
-	updatesHandler := bothttp.NewHandler(bot)
-	botapi.HandlerFromMux(updatesHandler, r)
-
-	var lc net.ListenConfig
-	ln, errListen := lc.Listen(ctx, "tcp", ":"+cfg.BotPort)
-	if errListen != nil {
-		slog.Error("run: http server bind error", slog.String("error", errListen.Error()), slog.String("port", cfg.BotPort))
-		return fmt.Errorf("listen: %w", errListen)
-	}
-
-	srv := &http.Server{Handler: r}
-	go func() {
-		if errSrv := srv.Serve(ln); errSrv != nil && errSrv != http.ErrServerClosed {
-			slog.Error("run: http server serve error", slog.String("error", errSrv.Error()))
-		}
-	}()
-	swaggerUI := fmt.Sprintf("http://127.0.0.1:%s/swagger", cfg.BotPort)
-	slog.Info("run: http server started",
-		slog.String("port", cfg.BotPort),
-		slog.String("swagger_ui", swaggerUI))
-
-	<-ctx.Done()
-
-	shutdownErr := srv.Shutdown(context.Background())
-	if shutdownErr != nil {
-		slog.Error("run: server graceful shutdown error", slog.String("error", shutdownErr.Error()))
-	}
-	slog.Info("run: shutting down")
-	wg.Wait()
-	return nil
 }
