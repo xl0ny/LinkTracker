@@ -3,14 +3,13 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/httputil/helper"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/api"
 )
-
-const errChatNotFound = "chat not found"
 
 type UseCase interface {
 	ChatRegistration(ctx context.Context, id int64) error
@@ -35,7 +34,7 @@ func NewHandler(uc UseCase) *Handler {
 //nolint:revive,staticcheck // method names must match generated ServerInterface
 func (h *Handler) PostTgChatId(w http.ResponseWriter, r *http.Request, id int64) {
 	if err := h.uc.ChatRegistration(r.Context(), id); err != nil {
-		if err.Error() == "chat already exists" {
+		if errors.Is(err, domain.ErrChatAlreadyExists) {
 			helper.WriteError(
 				w,
 				http.StatusConflict,
@@ -64,7 +63,7 @@ func (h *Handler) PostTgChatId(w http.ResponseWriter, r *http.Request, id int64)
 //nolint:revive,staticcheck // method name must match generated ServerInterface
 func (h *Handler) DeleteTgChatId(w http.ResponseWriter, r *http.Request, id int64) {
 	if err := h.uc.ChatDelition(r.Context(), id); err != nil {
-		if err.Error() == errChatNotFound {
+		if errors.Is(err, domain.ErrChatNotFound) {
 			helper.WriteError(
 				w,
 				http.StatusNotFound,
@@ -118,7 +117,7 @@ func (h *Handler) PostLinks(w http.ResponseWriter, r *http.Request, params api.P
 		return
 	}
 	if err := h.uc.LinkAddment(r.Context(), params.TgChatId, *body.Link, body.Tags, body.Filters); err != nil {
-		if err.Error() == "link already exists" {
+		if errors.Is(err, domain.ErrLinkAlreadyExists) {
 			helper.WriteError(
 				w,
 				http.StatusConflict,
@@ -130,7 +129,7 @@ func (h *Handler) PostLinks(w http.ResponseWriter, r *http.Request, params api.P
 			)
 			return
 		}
-		if err.Error() == errChatNotFound {
+		if errors.Is(err, domain.ErrChatNotFound) {
 			helper.WriteError(
 				w,
 				http.StatusNotFound,
@@ -169,19 +168,7 @@ func (h *Handler) PostLinks(w http.ResponseWriter, r *http.Request, params api.P
 
 func (h *Handler) GetLinks(w http.ResponseWriter, r *http.Request, params api.GetLinksParams) {
 	links, err := h.uc.GetLinks(r.Context(), params.TgChatId)
-	if err != nil {
-		if err.Error() == errChatNotFound {
-			helper.WriteError(
-				w,
-				http.StatusNotFound,
-				"failed to get links",
-				"CHAT_NOT_FOUND",
-				"Чат не найден",
-				"ErrChatNotFound",
-				err.Error(),
-			)
-			return
-		}
+	if err != nil && errors.Is(err, domain.ErrChatNotFound) {
 		helper.WriteError(
 			w,
 			http.StatusInternalServerError,
@@ -237,7 +224,7 @@ func (h *Handler) DeleteLinks(w http.ResponseWriter, r *http.Request, params api
 	}
 	removed, err := h.uc.DeleteLink(r.Context(), params.TgChatId, *body.Link)
 	if err != nil {
-		if err.Error() == errChatNotFound || err.Error() == "link not found" {
+		if errors.Is(err, domain.ErrChatNotFound) || errors.Is(err, domain.ErrLinkNotFound) {
 			helper.WriteError(
 				w,
 				http.StatusNotFound,

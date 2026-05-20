@@ -6,17 +6,54 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
+	commondb "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/db"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
 )
 
+type AccessMode string
+
+const (
+	AccessSQL AccessMode = "SQL"
+	AccessORM AccessMode = "ORM"
+)
+
+func (m *AccessMode) Decode(value string) error {
+	v := strings.ToUpper(strings.TrimSpace(value))
+	if v == "" {
+		*m = AccessSQL
+		return nil
+	}
+	switch v {
+	case string(AccessSQL):
+		*m = AccessSQL
+		return nil
+	case string(AccessORM):
+		*m = AccessORM
+		return nil
+	default:
+		return fmt.Errorf("unknown access_type %q (use SQL or ORM)", value)
+	}
+}
+
 type Config struct {
-	BotURL  string `envconfig:"APP_BOT_URL"`
-	Port    string `envconfig:"APP_SCRAPPER_PORT"`
+	commondb.Config `yaml:",inline"`
+	BotURL          string     `yaml:"bot_url"`
+	Port            string     `envconfig:"APP_SCRAPPER_PORT"`
+	AccessType      AccessMode `yaml:"access_type" envconfig:"APP_SCRAPPER_ACCESS_TYPE"`
+	Batch           struct {
+		Size int `yaml:"size"`
+	} `yaml:"batch"`
+	Scheduler struct {
+		Interval string `yaml:"interval"`
+		Workers  int    `yaml:"workers"`
+	} `yaml:"scheduler"`
 	Logging struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
@@ -26,35 +63,113 @@ func (c *Config) GetLevel() slog.Level {
 	return logging.LevelFromMode(c.Logging.Mode)
 }
 
+func (c *Config) PostgresDSN() string {
+	return commondb.BuildPostgresDSN(
+		c.DB.PostgresUser,
+		c.PostgresPassword,
+		c.DB.PostgresHost,
+		c.DB.PostgresPort,
+		c.DB.PostgresDB,
+		c.DB.PostgresSSLMode,
+	)
+}
+
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		slog.Info("scrapper config: .env not loaded (optional)", slog.String("error", err.Error()))
+	}
 	var c Config
-	if err := envconfig.Process("", &c); err != nil {
-		return nil, fmt.Errorf("config: %w", err)
+	data, err := os.ReadFile("cmd/scrapper/config.yaml")
+	if err != nil {
+		slog.Error("scrapper config: read cmd/scrapper/config.yaml error", slog.String("error", err.Error()))
+		return nil, fmt.Errorf("config: read cmd/scrapper/config.yaml: %w", err)
+	}
+	if err = yaml.Unmarshal(data, &c); err != nil {
+		return nil, fmt.Errorf("config: parse cmd/scrapper/config.yaml: %w", err)
+	}
+	if envErr := envconfig.Process("", &c); envErr != nil {
+		return nil, fmt.Errorf("config: %w", envErr)
 	}
 	c.BotURL = strings.TrimSpace(c.BotURL)
 	if c.BotURL == "" {
 		c.BotURL = "http://localhost:8081"
 		slog.Info("scrapper config: APP_BOT_URL default", slog.String("bot_url", c.BotURL))
 	}
-	if err := validateBotURL(c.BotURL); err != nil {
-		return nil, fmt.Errorf("config: APP_BOT_URL: %w", err)
+	if validateErr := validateBotURL(c.BotURL); validateErr != nil {
+		return nil, fmt.Errorf("config: APP_BOT_URL: %w", validateErr)
 	}
 	c.Port = strings.TrimSpace(c.Port)
 	if c.Port == "" {
 		c.Port = "8080"
 		slog.Info("scrapper config: APP_SCRAPPER_PORT default", slog.String("port", c.Port))
 	}
-
-	data, err := os.ReadFile("cmd/scrapper/config.yaml")
-	if err != nil {
-		slog.Error("scrapper config: read cmd/scrapper/config.yaml error", slog.String("error", err.Error()))
-		return &c, nil
+	rawAccess := string(c.AccessType)
+	var access AccessMode
+	if err = access.Decode(rawAccess); err != nil {
+		return nil, fmt.Errorf("config: access_type: %w", err)
 	}
-	if err = yaml.Unmarshal(data, &c); err != nil {
-		slog.Error("scrapper config: parse config.yaml error", slog.String("error", err.Error()))
+	c.AccessType = access
+	if rawAccess == "" {
+		slog.Info("scrapper config: access_type default", slog.String("access_type", string(c.AccessType)))
 	}
+	normalizeBatchAndScheduler(&c)
 	return &c, nil
+}
+
+func normalizeBatchAndScheduler(c *Config) {
+	if c.Batch.Size == 0 {
+		c.Batch.Size = 100
+		slog.Info("scrapper config: batch.size default", slog.Int("batch_size", c.Batch.Size))
+	}
+	if c.Batch.Size < 50 || c.Batch.Size > 500 {
+		slog.Warn("scrapper config: invalid batch.size, using default 100", slog.Int("batch_size", c.Batch.Size))
+		c.Batch.Size = 100
+	}
+	if c.Scheduler.Workers < 1 {
+		slog.Warn("scrapper config: invalid scheduler.workers, using default 4", slog.Int("workers", c.Scheduler.Workers))
+		c.Scheduler.Workers = 4
+	}
+	if strings.TrimSpace(c.Scheduler.Interval) == "" {
+		c.Scheduler.Interval = "1m"
+		slog.Info("scrapper config: scheduler.interval default", slog.String("scheduler_interval", c.Scheduler.Interval))
+	}
+	if _, parseErr := parseSchedulerInterval(c.Scheduler.Interval); parseErr != nil {
+		slog.Warn(
+			"scrapper config: invalid scheduler.interval, using default 1m",
+			slog.String("scheduler_interval", c.Scheduler.Interval),
+			slog.String("error", parseErr.Error()),
+		)
+		c.Scheduler.Interval = "1m"
+	}
+}
+
+func (c *Config) SchedulerInterval() time.Duration {
+	d, err := parseSchedulerInterval(c.Scheduler.Interval)
+	if err != nil {
+		return time.Minute
+	}
+	return d
+}
+
+func parseSchedulerInterval(raw string) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, errors.New("empty interval")
+	}
+	if value, atoiErr := strconv.Atoi(raw); atoiErr == nil {
+		if value <= 0 {
+			return 0, errors.New("interval must be > 0")
+		}
+		return time.Duration(value) * time.Second, nil
+	}
+	d, durErr := time.ParseDuration(raw)
+	if durErr != nil {
+		return 0, fmt.Errorf("parse duration: %w", durErr)
+	}
+	if d <= 0 {
+		return 0, errors.New("interval must be > 0")
+	}
+	return d, nil
 }
 
 func validateBotURL(raw string) error {

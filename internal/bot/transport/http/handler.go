@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/httputil/helper"
 )
 
 type MessageSender interface {
@@ -24,12 +25,27 @@ func (h *Handler) PostUpdates(w http.ResponseWriter, r *http.Request) {
 	slog.Info("http: POST /updates received")
 	var body api.LinkUpdate
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		slog.Warn("http: invalid updates body", slog.String("error", err.Error()))
-		w.WriteHeader(http.StatusBadRequest)
+		helper.WriteError(
+			w,
+			http.StatusBadRequest,
+			"http: invalid updates body",
+			"BAD_REQUEST",
+			"Некорректное тело запроса",
+			"ErrInvalidJSON",
+			err.Error(),
+		)
 		return
 	}
 	if body.TgChatIds == nil || len(*body.TgChatIds) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
+		helper.WriteError(
+			w,
+			http.StatusBadRequest,
+			"http: missing tgChatIds",
+			"BAD_REQUEST",
+			"Параметр tgChatIds обязателен и не может быть пустым",
+			"ErrValidation",
+			"tgChatIds is required and must be non-empty",
+		)
 		return
 	}
 	msg := "Обновление обнаружено"
@@ -49,7 +65,15 @@ func (h *Handler) PostUpdates(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if sendErr {
-		w.WriteHeader(http.StatusInternalServerError)
+		helper.WriteError(
+			w,
+			http.StatusInternalServerError,
+			"http: send update failed",
+			"INTERNAL_ERROR",
+			"Не удалось отправить сообщение в один или несколько чатов",
+			"ErrSendMessage",
+			"telegram send failed for at least one chat",
+		)
 		return
 	}
 	w.WriteHeader(http.StatusOK)

@@ -1,2 +1,20 @@
+access_type: "SQL" # SQL | ORM
+
+bot_url: "http://localhost:8081"
+
+db:
+  postgres_user: postgres
+  postgres_db: linktracker
+  postgres_host: localhost
+  postgres_port: "5432"
+  postgres_ssl_mode: disable
+
 logging:
   mode: "INFO" #variants ["INFO", "DEBUG"]
+
+batch:
+  size: 250 #50 - 500
+
+scheduler:
+  interval: "1m"
+  workers: 4

@@ -7,8 +7,18 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
+
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/textutil"
+)
+
+const (
+	previewRunes            = 200
+	minPathPartsGitHub      = 2
+	pathPartsForIssueOrPull = 4
 )
 
 type Client struct {
@@ -18,68 +28,275 @@ type Client struct {
 }
 
 func NewClient(httpClient *http.Client, token string) *Client {
+	return NewClientWithAPIBase(httpClient, token, "https://api.github.com")
+}
+
+func NewClientWithAPIBase(httpClient *http.Client, token, apiBase string) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
+	if apiBase == "" {
+		apiBase = "https://api.github.com"
+	}
+	apiBase = strings.TrimRight(apiBase, "/")
 	return &Client{
 		http:    httpClient,
 		token:   token,
-		baseURL: "https://api.github.com",
+		baseURL: apiBase,
 	}
 }
 
-type repoResponse struct {
-	UpdatedAt time.Time `json:"updated_at"`
+type ghRef struct {
+	Owner  string
+	Repo   string
+	IssueN int
+	IsPull bool
+	IsRepo bool
 }
 
-// CheckUpdated возвращает время последнего обновления репозитория по API; сравнение с ранее сохранённым временем — на уровне вызывающего кода.
-func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.Time, err error) {
-	owner, repo, err := parseRepoURL(repoURL)
+func parseGitHubRef(raw string) (ghRef, error) {
+	u, err := url.Parse(raw)
 	if err != nil {
-		return time.Time{}, err
+		return ghRef{}, fmt.Errorf("invalid url: %w", err)
+	}
+	if u.Host != "github.com" {
+		return ghRef{}, errors.New("not a github url")
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) < minPathPartsGitHub {
+		return ghRef{}, fmt.Errorf("invalid repo path: %s", u.Path)
+	}
+	ref := ghRef{Owner: parts[0], Repo: parts[1]}
+	if len(parts) >= pathPartsForIssueOrPull {
+		switch parts[2] {
+		case "issues":
+			n, atoiErr := strconv.Atoi(parts[3])
+			if atoiErr != nil {
+				return ghRef{}, fmt.Errorf("invalid issue number: %s", parts[3])
+			}
+			ref.IssueN = n
+			return ref, nil
+		case "pull":
+			n, atoiErr := strconv.Atoi(parts[3])
+			if atoiErr != nil {
+				return ghRef{}, fmt.Errorf("invalid pull number: %s", parts[3])
+			}
+			ref.IssueN = n
+			ref.IsPull = true
+			return ref, nil
+		}
+	}
+	ref.IsRepo = true
+	return ref, nil
+}
+
+type userObj struct {
+	Login string `json:"login"`
+}
+
+type issueItem struct {
+	HTMLURL     string    `json:"html_url"`
+	Title       string    `json:"title"`
+	Body        string    `json:"body"`
+	User        userObj   `json:"user"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	PullRequest *struct {
+		HTMLURL string `json:"html_url"`
+	} `json:"pull_request"`
+}
+
+type repoInfo struct {
+	UpdatedAt time.Time `json:"updated_at"`
+	PushedAt  time.Time `json:"pushed_at"`
+}
+
+type commentItem struct {
+	HTMLURL   string    `json:"html_url"`
+	Body      string    `json:"body"`
+	User      userObj   `json:"user"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (c *Client) CheckLink(ctx context.Context, pageURL string, since time.Time) (domain.LinkCheckOutcome, error) {
+	ref, err := parseGitHubRef(pageURL)
+	if err != nil {
+		return domain.LinkCheckOutcome{}, err
+	}
+	if ref.IsRepo {
+		return c.checkRepo(ctx, ref, since)
+	}
+	return c.checkIssueOrPull(ctx, ref, since)
+}
+
+func (c *Client) CheckUpdated(ctx context.Context, repoURL string) (latest time.Time, err error) {
+	out, err := c.CheckLink(ctx, repoURL, time.Time{})
+	if err != nil {
+		return time.Time{}, fmt.Errorf("github CheckUpdated: %w", err)
+	}
+	return out.Latest, nil
+}
+
+func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (domain.LinkCheckOutcome, error) {
+	apiURL := fmt.Sprintf("%s/repos/%s/%s/issues?state=all&sort=created&direction=desc&per_page=100", c.baseURL, ref.Owner, ref.Repo)
+	var list []issueItem
+	if err := c.getJSON(ctx, apiURL, &list); err != nil {
+		return domain.LinkCheckOutcome{}, fmt.Errorf("list issues: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/repos/%s/%s", c.baseURL, owner, repo)
+	var repo repoInfo
+	repoURL := fmt.Sprintf("%s/repos/%s/%s", c.baseURL, ref.Owner, ref.Repo)
+	if err := c.getJSON(ctx, repoURL, &repo); err != nil {
+		return domain.LinkCheckOutcome{}, fmt.Errorf("repo info: %w", err)
+	}
+
+	watermark := repo.UpdatedAt
+	if repo.PushedAt.After(watermark) {
+		watermark = repo.PushedAt
+	}
+	for _, it := range list {
+		if it.CreatedAt.After(watermark) {
+			watermark = it.CreatedAt
+		}
+		if it.UpdatedAt.After(watermark) {
+			watermark = it.UpdatedAt
+		}
+	}
+
+	if since.IsZero() {
+		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
+	}
+
+	var newest *issueItem
+	for i := range list {
+		it := &list[i]
+		if !it.CreatedAt.After(since) {
+			continue
+		}
+		if newest == nil || it.CreatedAt.After(newest.CreatedAt) {
+			newest = it
+		}
+	}
+	if newest == nil {
+		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
+	}
+
+	kind := "Issue"
+	link := newest.HTMLURL
+	if newest.PullRequest != nil {
+		kind = "PR"
+		if newest.PullRequest.HTMLURL != "" {
+			link = newest.PullRequest.HTMLURL
+		}
+	}
+	desc := formatGitHubUpdate(kind, newest.Title, newest.User.Login, newest.CreatedAt, newest.Body, link)
+	return domain.LinkCheckOutcome{
+		Changed:     true,
+		Latest:      newest.CreatedAt,
+		Description: desc,
+	}, nil
+}
+
+func (c *Client) checkIssueOrPull(ctx context.Context, ref ghRef, since time.Time) (domain.LinkCheckOutcome, error) {
+	issueURL := fmt.Sprintf("%s/repos/%s/%s/issues/%d", c.baseURL, ref.Owner, ref.Repo, ref.IssueN)
+	var issue issueItem
+	if err := c.getJSON(ctx, issueURL, &issue); err != nil {
+		return domain.LinkCheckOutcome{}, fmt.Errorf("get issue: %w", err)
+	}
+
+	commentsURL := fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments?per_page=100&sort=created&direction=desc", c.baseURL, ref.Owner, ref.Repo, ref.IssueN)
+	var comments []commentItem
+	if err := c.getJSON(ctx, commentsURL, &comments); err != nil {
+		return domain.LinkCheckOutcome{}, fmt.Errorf("list comments: %w", err)
+	}
+
+	watermark := issue.UpdatedAt
+	if issue.CreatedAt.After(watermark) {
+		watermark = issue.CreatedAt
+	}
+	for _, cm := range comments {
+		if cm.CreatedAt.After(watermark) {
+			watermark = cm.CreatedAt
+		}
+	}
+
+	if since.IsZero() {
+		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
+	}
+
+	var newest *commentItem
+	for i := range comments {
+		cm := &comments[i]
+		if !cm.CreatedAt.After(since) {
+			continue
+		}
+		if newest == nil || cm.CreatedAt.After(newest.CreatedAt) {
+			newest = cm
+		}
+	}
+	if newest == nil {
+		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
+	}
+
+	kind := "комментарий к Issue"
+	if ref.IsPull {
+		kind = "комментарий к PR"
+	}
+	desc := formatGitHubUpdate(kind, issue.Title, newest.User.Login, newest.CreatedAt, newest.Body, newest.HTMLURL)
+	return domain.LinkCheckOutcome{
+		Changed:     true,
+		Latest:      newest.CreatedAt,
+		Description: desc,
+	}, nil
+}
+
+func formatGitHubUpdate(kind, title, author string, at time.Time, body, link string) string {
+	preview := textutil.Preview(textutil.StripHTML(body), previewRunes)
+	var b strings.Builder
+	b.WriteString("GitHub · ")
+	b.WriteString(kind)
+	b.WriteString("\n")
+	b.WriteString("Название: ")
+	b.WriteString(title)
+	b.WriteString("\n")
+	b.WriteString("Пользователь: ")
+	b.WriteString(author)
+	b.WriteString("\n")
+	b.WriteString("Время: ")
+	b.WriteString(at.UTC().Format(time.RFC3339))
+	b.WriteString("\n")
+	b.WriteString("Превью: ")
+	b.WriteString(preview)
+	b.WriteString("\n")
+	b.WriteString("Ссылка: ")
+	b.WriteString(link)
+	return b.String()
+}
+
+func (c *Client) getJSON(ctx context.Context, apiURL string, dst any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("new request: %w", err)
+		return fmt.Errorf("new request: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
-
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("do request: %w", err)
+		return fmt.Errorf("do request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode == http.StatusNotFound {
-		return time.Time{}, fmt.Errorf("repo not found: %s", repoURL)
+		return fmt.Errorf("not found: %s", apiURL)
 	}
 	if resp.StatusCode >= http.StatusMultipleChoices {
-		return time.Time{}, fmt.Errorf("github api error: status=%d", resp.StatusCode)
+		return fmt.Errorf("github api error: status=%d", resp.StatusCode)
 	}
-
-	var body repoResponse
-	if errDecode := json.NewDecoder(resp.Body).Decode(&body); errDecode != nil {
-		return time.Time{}, fmt.Errorf("decode: %w", errDecode)
+	if decErr := json.NewDecoder(resp.Body).Decode(dst); decErr != nil {
+		return fmt.Errorf("decode: %w", decErr)
 	}
-	return body.UpdatedAt, nil
-}
-
-func parseRepoURL(raw string) (owner, repo string, err error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", "", fmt.Errorf("invalid url: %w", err)
-	}
-	if u.Host != "github.com" {
-		return "", "", errors.New("not a github url")
-	}
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	const minPathParts = 2
-	if len(parts) < minPathParts {
-		return "", "", fmt.Errorf("invalid repo path: %s", u.Path)
-	}
-	return parts[0], parts[1], nil
+	return nil
 }
