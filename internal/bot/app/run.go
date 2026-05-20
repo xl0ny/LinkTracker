@@ -22,6 +22,7 @@ import (
 	transporthttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/kafka"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/resilience"
 )
 
 const workerCount = 5
@@ -36,7 +37,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("telegram bot: %w", err)
 	}
 
-	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL)
+	scrapperHTTP := resilience.NewHTTPClient("scrapper", cfg.Resilience)
+	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL, scrapperHTTP)
 	if err != nil {
 		return fmt.Errorf("app run: Link tracker creation error - %w", err)
 	}

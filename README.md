@@ -24,6 +24,18 @@ Telegram-бот, который отслеживает изменения на �
 
 6. Запуск приложений: `make run-all` или `make run-bot` / `make run-scrapper`.
 
+## ДЗ 1: надёжность (timeout, retry, circuit breaker, rate limit, fallback)
+
+Параметры в `cmd/scrapper/config.yaml` и `cmd/bot/config.yaml` (секция `resilience`):
+
+- **HTTP timeout** — `resilience.http.timeout`
+- **Retry** (constant backoff) — `resilience.retry.max_attempts`, `delay`, `retryable_statuses`
+- **Circuit breaker** (sliding window) — `resilience.circuit_breaker.*`
+- **Rate limiting** (по IP, HTTP 429) — `resilience.rate_limit` на публичных endpoint scrapper
+- **Fallback уведомлений** — HTTP к боту, при ошибке Kafka (`kafka.enabled: true`)
+
+Тесты: `go test ./internal/common/resilience/... ./internal/scrapper/infrastructure/notifier/...`
+
 ## ДЗ 6 допы (все сделаны кроме кросс-ревью)
 
 

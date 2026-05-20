@@ -26,6 +26,23 @@ kafka:
     process_retries: 3                       # ретраи только для бизнес-ошибок (SendMessage); decode/validation идут в DLQ сразу
     retry_delay: "500ms"                     # пауза между попытками SendMessage; защищает Telegram от мгновенных повторов
 
+resilience:
+  http:
+    timeout: "5s"
+  retry:
+    max_attempts: 3
+    delay: "200ms"
+    retryable_statuses: [500, 502, 503, 504]
+  circuit_breaker:
+    sliding_window_size: 10
+    minimum_required_calls: 5
+    failure_rate_threshold: 100
+    permitted_calls_in_half_open_state: 5
+    wait_duration_in_open_state: "1s"
+  rate_limit:
+    rps: 0
+    burst: 0
+
 redis:
   enabled: true                              # выключить, если запускаешь бота локально без Redis — идемпотентность отключится
   addr: "localhost:6379"                     # хост:порт Redis; в compose => redis:6379

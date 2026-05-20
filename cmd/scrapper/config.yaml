@@ -20,7 +20,7 @@ scheduler:
   workers: 4
 
 kafka:
-  enabled: true                              # true => scrapper отправляет уведомления через Kafka, иначе через HTTP-клиент бота
+  enabled: true                              # true => при недоступности HTTP-бота уведомления уходят в Kafka (fallback)
   brokers:                                   # bootstrap.servers; перечисляем все 3 для отказоустойчивости, клиент сам выберет рабочий
     - "localhost:19092"
     - "localhost:29092"
@@ -46,6 +46,23 @@ kafka:
       max_attempts: 5                        # после стольких неудачных попыток отправки строка получает status='failed' и больше не ретраится
       base_backoff: "500ms"                  # начальная задержка экспоненциального бэкоффа между ретраями одной строки
       max_backoff: "1m"                      # верхняя граница бэкоффа; чтобы 5-я попытка не ушла на сутки
+
+resilience:
+  http:
+    timeout: "5s"
+  retry:
+    max_attempts: 3
+    delay: "200ms"
+    retryable_statuses: [500, 502, 503, 504]
+  circuit_breaker:
+    sliding_window_size: 10
+    minimum_required_calls: 5
+    failure_rate_threshold: 100
+    permitted_calls_in_half_open_state: 5
+    wait_duration_in_open_state: "1s"
+  rate_limit:
+    rps: 20
+    burst: 40
 
 valkey:
   enabled: true

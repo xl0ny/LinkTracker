@@ -15,12 +15,16 @@ type client struct {
 	api *Client
 }
 
-func NewLinkTracker(serverURL string) (application.LinkTracker, error) {
+func NewLinkTracker(serverURL string, httpClient *http.Client) (application.LinkTracker, error) {
 	url := strings.TrimSpace(serverURL)
 	if url == "" {
 		return nil, errors.New("scrapper URL is required")
 	}
-	api, err := NewClient(url)
+	opts := []ClientOption{}
+	if httpClient != nil {
+		opts = append(opts, WithHTTPClient(httpClient))
+	}
+	api, err := NewClient(url, opts...)
 	if err != nil {
 		return nil, err
 	}

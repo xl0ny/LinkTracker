@@ -11,6 +11,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/resilience"
 )
 
 type Config struct {
@@ -48,6 +49,8 @@ type Config struct {
 			Outbox               config.KafkaOutbox `yaml:"outbox"`
 		} `yaml:"producer"`
 	} `yaml:"kafka"`
+
+	Resilience resilience.Config `yaml:"resilience"`
 
 	Valkey struct {
 		Enabled     bool          `yaml:"enabled"`

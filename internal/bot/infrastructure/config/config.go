@@ -11,6 +11,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/resilience"
 )
 
 type Config struct {
@@ -29,6 +30,8 @@ type Config struct {
 			config.KafkaConsumer `yaml:",inline"`
 		} `yaml:"consumer"`
 	} `yaml:"kafka"`
+
+	Resilience resilience.Config `yaml:"resilience"`
 
 	Redis struct {
 		Enabled   bool          `yaml:"enabled"`

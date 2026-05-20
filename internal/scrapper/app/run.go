@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/resilience"
 	scrapperapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
@@ -21,6 +22,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/pgrepo"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/github"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/kafka"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/notifier"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/outbox"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/stackoverflow"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/swagger"
@@ -60,15 +62,19 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	h := handler.NewHandler(uc)
 	r := chi.NewRouter()
+	r.Use(resilience.RateLimitMiddleware(cfg.Resilience.RateLimit))
 	mountSwagger(r)
 	api.HandlerFromMux(h, r)
 
-	botAPI, err := botclient.NewClientWithResponses(cfg.BotURL)
+	botHTTP := resilience.NewHTTPClient("bot", cfg.Resilience)
+	botAPI, err := botclient.NewClientWithResponses(cfg.BotURL, botclient.WithHTTPClient(botHTTP))
 	if err != nil {
 		return fmt.Errorf("bot client init: %w", err)
 	}
-	gh := github.NewClient(nil, os.Getenv("GITHUB_TOKEN"))
-	so := stackoverflow.NewClient(nil)
+	ghHTTP := resilience.NewHTTPClient("github", cfg.Resilience)
+	soHTTP := resilience.NewHTTPClient("stackoverflow", cfg.Resilience)
+	gh := github.NewClient(ghHTTP, os.Getenv("GITHUB_TOKEN"))
+	so := stackoverflow.NewClient(soHTTP)
 	lc := checker.New(gh, so)
 
 	notifier, publisher, npErr := buildNotifier(ctx, repo, botAPI, cfg)
@@ -157,8 +163,9 @@ func buildUseCase(ctx context.Context, repo Repository, cfg *config.Config) (han
 }
 
 func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.ClientWithResponses, cfg *config.Config) (application.BotNotifier, *outbox.Publisher, error) {
+	primary := botclient.NewNotifier(botAPI)
 	if !cfg.Kafka.Kafka.Enabled {
-		return botclient.NewNotifier(botAPI), nil, nil
+		return primary, nil, nil
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(cfg.Kafka.Producer.Mode))
@@ -167,23 +174,23 @@ func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.Clien
 	}
 	switch mode {
 	case "direct":
-		n, err := kafka.NewNotifier(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer)
+		fallback, err := kafka.NewNotifier(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scrapper: kafka notifier: %w", err)
 		}
-		return n, nil, nil
+		return notifier.NewFallback(primary, fallback), nil, nil
 	case "outbox":
 		writeRepo, okWrite := repo.(outbox.NotifierRepository)
 		pollRepo, okPoll := repo.(outbox.PublisherRepository)
 		if !okWrite || !okPoll {
 			return nil, nil, errors.New("scrapper: outbox mode requires a repository with outbox support (use access_type=SQL)")
 		}
-		notifier, err := outbox.NewNotifier(ctx, writeRepo, cfg.Kafka.Kafka)
+		fallback, err := outbox.NewNotifier(ctx, writeRepo, cfg.Kafka.Kafka)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scrapper: outbox notifier: %w", err)
 		}
 		publisher := outbox.NewPublisher(pollRepo, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer, cfg.Kafka.Producer.Outbox)
-		return notifier, publisher, nil
+		return notifier.NewFallback(primary, fallback), publisher, nil
 	default:
 		return nil, nil, fmt.Errorf("scrapper: unknown kafka producer mode %q (expected direct|outbox)", cfg.Kafka.Producer.Mode)
 	}
