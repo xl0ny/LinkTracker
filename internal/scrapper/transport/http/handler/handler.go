@@ -171,11 +171,11 @@ func (h *Handler) GetLinks(w http.ResponseWriter, r *http.Request, params api.Ge
 	if err != nil && errors.Is(err, domain.ErrChatNotFound) {
 		helper.WriteError(
 			w,
-			http.StatusNotFound,
+			http.StatusInternalServerError,
 			"failed to get links",
-			"CHAT_NOT_FOUND",
-			"Чат не найден",
-			"ErrChatNotFound",
+			"INTERNAL_ERROR",
+			"Внутренняя ошибка",
+			"ErrInternal",
 			err.Error(),
 		)
 		return

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
@@ -30,24 +31,27 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	bot, err := telegram.NewBot(cfg.TelegramToken)
 	if err != nil {
-		return fmt.Errorf("run: bot init: %w", err)
+		return fmt.Errorf("run: bot initialization error: %w", err)
 	}
 
 	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL)
 	if err != nil {
-		return fmt.Errorf("app run: Link tracker creation error - %w", err)
+		slog.Warn("scrapper client disabled", slog.String("error", err.Error()), slog.String("event", "scrapper_client"))
+		tracker = application.NewNoopTracker()
 	}
 
 	stateStore := application.NewTrackStateStore()
 	trackCmd := command.NewTrack(tracker, stateStore)
-	commands := command.Commands(tracker, trackCmd)
+	commands := command.Commands(tracker, trackCmd, tracker, tracker)
 	bot.SetMenuCommands(commands)
 
 	actions := bot.ReceiveUpdates(ctx)
 	dispatcher := application.NewDispatcher(commands, trackCmd, stateStore)
-
+	var wg sync.WaitGroup
 	for range workerCount {
-		go application.Worker(actions, dispatcher, bot)
+		wg.Go(func() {
+			application.Worker(actions, dispatcher, bot)
+		})
 	}
 
 	r := chi.NewRouter()
@@ -91,5 +95,6 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		slog.Error("run: server graceful shutdown error", slog.String("error", shutdownErr.Error()))
 	}
 	slog.Info("run: shutting down")
+	wg.Wait()
 	return nil
 }

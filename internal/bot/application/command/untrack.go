@@ -5,15 +5,18 @@ import (
 	"fmt"
 	"strings"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
-type Untrack struct {
-	tracker application.LinkTracker
+type linkRemover interface {
+	RemoveLink(ctx context.Context, chatID int64, link string) error
 }
 
-func NewUntrack(tracker application.LinkTracker) *Untrack {
+type Untrack struct {
+	tracker linkRemover
+}
+
+func NewUntrack(tracker linkRemover) *Untrack {
 	return &Untrack{tracker: tracker}
 }
 

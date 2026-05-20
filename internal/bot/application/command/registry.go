@@ -4,12 +4,13 @@ import "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker
 
 // Commands возвращает все команды бота для меню и диспетчера.
 // track должен быть тем же экземпляром, что передаётся в Dispatcher как обработчик продолжения диалога /track.
-func Commands(tracker application.LinkTracker, track *Track) []application.Command {
+// Один и тот же конкретный клиент можно передать в forStart, forUntrack и forList — типы интерфейсов разные.
+func Commands(forStart chatRegistrar, track *Track, forUntrack linkRemover, forList linkLister) []application.Command {
 	return []application.Command{
-		NewStart(tracker),
+		NewStart(forStart),
 		Help{},
 		track,
-		NewUntrack(tracker),
-		NewList(tracker),
+		NewUntrack(forUntrack),
+		NewList(forList),
 	}
 }

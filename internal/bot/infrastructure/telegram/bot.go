@@ -12,24 +12,23 @@ import (
 
 const actionBuf = 100
 
-type bot struct {
+type Bot struct {
 	api *tgbotapi.BotAPI
 }
 
-//revive:disable-next-line:unexported-return returning *bot is intentional (internal impl)
-func NewBot(telegramToken string) (*bot, error) {
+func NewBot(telegramToken string) (*Bot, error) {
 	api, err := tgbotapi.NewBotAPI(telegramToken)
 	if err != nil {
 		return nil, fmt.Errorf("bot: initialization error - %w", err)
 	}
 	slog.Info("telegram: bot authorized", slog.String("bot_username", api.Self.UserName))
 
-	return &bot{
+	return &Bot{
 		api: api,
 	}, nil
 }
 
-func (bot *bot) SendMessage(chatid int64, message string) error {
+func (bot *Bot) SendMessage(chatid int64, message string) error {
 	msg := tgbotapi.NewMessage(chatid, message)
 	_, err := bot.api.Send(msg)
 	if err != nil {
@@ -38,7 +37,7 @@ func (bot *bot) SendMessage(chatid int64, message string) error {
 	return nil
 }
 
-func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
+func (bot *Bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 	ch := make(chan domain.Action, actionBuf)
 
 	u := tgbotapi.NewUpdate(0)
@@ -67,7 +66,7 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 	return ch
 }
 
-func (bot *bot) SetMenuCommands(cmds []commands.Command) {
+func (bot *Bot) SetMenuCommands(cmds []commands.Command) {
 	botCommands := make([]tgbotapi.BotCommand, 0, len(cmds))
 	for _, c := range cmds {
 		botCommands = append(botCommands, tgbotapi.BotCommand{
