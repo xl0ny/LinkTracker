@@ -5,26 +5,26 @@ logging:
   mode: "INFO" # variants ["INFO", "DEBUG"]
 
 kafka:
-  enabled: true                              # true => бот читает уведомления из Kafka, иначе из HTTP /updates
-  brokers:                                   # три bootstrap-адреса локального KRaft-кластера (см. compose.yaml)
+  enabled: true                                  # true => бот читает уведомления из Kafka, иначе из HTTP /updates
+  brokers:                                       # три bootstrap-адреса локального KRaft-кластера (см. compose.yaml)
     - "localhost:19092"
     - "localhost:29092"
     - "localhost:39092"
-  links_topic: "link-updates"                # должен совпадать с топиком, в который пишет scrapper
-  failed_links_topic: "failed-links"         # отдельный топик для нотификаций о неудачных проверках ссылок
-  dlq_topic: "link-updates-dlq"              # сюда бот складывает poison pills и сообщения после исчерпания ретраев
-  schema_registry_url: "http://localhost:18081" # Confluent Schema Registry из compose (порт не 8081 — там HTTP бота)
-  update_subject: "link-update-event-value"  # subject в SR для LinkUpdateEvent
-  failed_subject: "failed-links-event-value" # subject в SR для LinkUpdateFailedEvent
+  processed_updates_topic: "link.processed-updates" # топик с обработанными обновлениями от AI Agent
+  failed_links_topic: "failed-links"             # отдельный топик для нотификаций о неудачных проверках ссылок
+  dlq_topic: "link.processed-updates-dlq"        # сюда бот складывает poison pills и сообщения после исчерпания ретраев
+  schema_registry_url: "http://localhost:18081"  # Confluent Schema Registry из compose
+  processed_update_subject: "link-processed-update-event-value"
+  failed_subject: "failed-links-event-value"
 
   consumer:
-    consumer_group: "bot-link-updates"       # group.id; общий для всех инстансов бота, чтобы Kafka делила между ними партиции
-    consumer_client_id: "bot-consumer"       # client.id; видно в Kafka UI и логах брокера, удобно при диагностике
-    read_timeout: "1s"                       # MaxWait у FetchMessage: компромисс между отзывчивостью и пустыми round-trip к брокеру
-    commit_interval: "0s"                    # 0 => коммитим вручную после успешной обработки (at-least-once без потерь)
-    start_offset: "earliest"                 # при первом подключении группы читаем всё с начала; в проде обычно latest
-    process_retries: 3                       # ретраи только для бизнес-ошибок (SendMessage); decode/validation идут в DLQ сразу
-    retry_delay: "500ms"                     # пауза между попытками SendMessage; защищает Telegram от мгновенных повторов
+    consumer_group: "bot-link-updates"
+    consumer_client_id: "bot-consumer"
+    read_timeout: "1s"
+    commit_interval: "0s"
+    start_offset: "earliest"
+    process_retries: 3
+    retry_delay: "500ms"
 
 resilience:
   http:
@@ -32,8 +32,8 @@ resilience:
   retry:
     max_attempts: 3
     delay: "200ms"
-    backoff: "constant"   # constant | exponential
-    max_delay: "0s"       # верхняя граница для exponential (0 = без ограничения)
+    backoff: "constant"
+    max_delay: "0s"
     retryable_statuses: [500, 502, 503, 504]
   circuit_breaker:
     sliding_window_size: 10
@@ -46,8 +46,8 @@ resilience:
     burst: 0
 
 redis:
-  enabled: true                              # выключить, если запускаешь бота локально без Redis — идемпотентность отключится
-  addr: "localhost:6379"                     # хост:порт Redis; в compose => redis:6379
-  db: 0                                      # номер логической БД Redis; разные сервисы можно изолировать через разные db
-  key_prefix: "bot:processed:"               # префикс ключа для processed event ids; помогает отличать ключи в общем Redis
-  ttl: "24h"                                 # сколько хранить запись об уже обработанном eventId; должно перекрывать максимальный publisher backoff
+  enabled: true
+  addr: "localhost:6379"
+  db: 0
+  key_prefix: "bot:processed:"
+  ttl: "24h"

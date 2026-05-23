@@ -16,7 +16,7 @@ type stubNotifier struct {
 	called          string
 }
 
-func (s *stubNotifier) Notify(_ context.Context, _ int64, _ domain.Link, _ string) error {
+func (s *stubNotifier) Notify(_ context.Context, _ int64, _ domain.Link, _, _ string) error {
 	s.called = "notify"
 	return s.notifyErr
 }
@@ -31,7 +31,7 @@ func TestFallback_httpDownUsesKafka(t *testing.T) {
 	fallback := &stubNotifier{}
 	fb := NewFallback(primary, fallback)
 
-	err := fb.Notify(context.Background(), 1, domain.Link{URL: "https://example.com"}, "x")
+	err := fb.Notify(context.Background(), 1, domain.Link{URL: "https://example.com"}, "x", "u")
 	require.NoError(t, err)
 	require.Equal(t, "notify", fallback.called)
 }
@@ -41,7 +41,7 @@ func TestFallback_bothFailReturnsError(t *testing.T) {
 	fallback := &stubNotifier{notifyErr: errors.New("kafka down")}
 	fb := NewFallback(primary, fallback)
 
-	err := fb.Notify(context.Background(), 1, domain.Link{URL: "https://example.com"}, "x")
+	err := fb.Notify(context.Background(), 1, domain.Link{URL: "https://example.com"}, "x", "u")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "http down")
 	require.Contains(t, err.Error(), "kafka down")

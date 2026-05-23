@@ -41,9 +41,11 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 	require.True(t, ok)
 	repoRoot := filepath.Join(filepath.Dir(testFile), "..", "..", "..", "..")
 
-	updateSchema, err := os.ReadFile(filepath.Join(repoRoot, "schemas", "avro", "link_update_event.avsc"))
+	processedPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
+	failedPath := filepath.Join(repoRoot, "schemas", "avro", "failed_links_event.avsc")
+	processedSchema, err := os.ReadFile(processedPath)
 	require.NoError(t, err)
-	failedSchema, err := os.ReadFile(filepath.Join(repoRoot, "schemas", "avro", "failed_links_event.avsc"))
+	failedSchema, err := os.ReadFile(failedPath)
 	require.NoError(t, err)
 
 	var nextID int
@@ -51,16 +53,16 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 		switch {
 		case r.Method == http.MethodPost && len(r.URL.Path) > len("/subjects/"):
 			nextID++
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"id":%d}`, nextID)))
+			_, _ = fmt.Fprintf(w, `{"id":%d}`, nextID)
 		case r.Method == http.MethodGet && len(r.URL.Path) > len("/schemas/ids/"):
 			id := 0
-			if _, err := fmt.Sscanf(r.URL.Path, "/schemas/ids/%d", &id); err != nil || id < 1 || id > 2 {
+			if _, sErr := fmt.Sscanf(r.URL.Path, "/schemas/ids/%d", &id); sErr != nil || id < 1 || id > 2 {
 				http.NotFound(w, r)
 				return
 			}
 			var sch string
 			if id == 1 {
-				sch = string(updateSchema)
+				sch = string(processedSchema)
 			} else {
 				sch = string(failedSchema)
 			}
@@ -72,23 +74,21 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	encoder, err := registry.NewEncoder(ctx, srv.URL,
-		"link-update-integration", "failed-integration",
-		filepath.Join(repoRoot, "schemas", "avro", "link_update_event.avsc"),
-		filepath.Join(repoRoot, "schemas", "avro", "failed_links_event.avsc"),
-	)
+	processedEnc, err := registry.NewSingleEncoder(ctx, srv.URL, "processed-integration", processedPath)
+	require.NoError(t, err)
+	failedEnc, err := registry.NewSingleEncoder(ctx, srv.URL, "failed-integration", failedPath)
 	require.NoError(t, err)
 
-	topicUpdates := fmt.Sprintf("link-updates-it-%d", time.Now().UnixNano())
+	topicProcessed := fmt.Sprintf("link.processed-updates-it-%d", time.Now().UnixNano())
 	topicFailed := fmt.Sprintf("failed-links-it-%d", time.Now().UnixNano())
-	topicDLQ := fmt.Sprintf("link-updates-dlq-it-%d", time.Now().UnixNano())
+	topicDLQ := fmt.Sprintf("link.processed-updates-dlq-it-%d", time.Now().UnixNano())
 
 	dialConn, err := kafkago.DialContext(ctx, "tcp", brokers[0])
 	require.NoError(t, err)
 
-	err = dialConn.CreateTopics(
+	require.NoError(t, dialConn.CreateTopics(
 		kafkago.TopicConfig{
-			Topic:             topicUpdates,
+			Topic:             topicProcessed,
 			NumPartitions:     2,
 			ReplicationFactor: 1,
 		},
@@ -102,20 +102,22 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 			NumPartitions:     1,
 			ReplicationFactor: 1,
 		},
-	)
+	))
 	require.NoError(t, dialConn.Close())
 
-	payload, err := encoder.EncodeUpdate(map[string]any{
+	payload, err := processedEnc.Encode(map[string]any{
 		"eventId":     "integration-event-id",
 		"occurredAt":  time.Now().UnixMilli(),
 		"url":         "https://example.com/integration",
-		"description": map[string]any{"string": "integration ok"},
+		"description": "integration ok",
+		"tgChatIds":   []any{int64(424242)},
+		"priority":    "HIGH",
 	})
 	require.NoError(t, err)
 
 	w := &kafkago.Writer{
 		Addr:                   kafkago.TCP(brokers...),
-		Topic:                  topicUpdates,
+		Topic:                  topicProcessed,
 		AllowAutoTopicCreation: false,
 		BatchTimeout:           time.Millisecond,
 		WriteTimeout:           30 * time.Second,
@@ -130,7 +132,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	failPayload, err := encoder.EncodeFailed(map[string]any{
+	failPayload, err := failedEnc.Encode(map[string]any{
 		"eventId":     "bootstrap-failed-msg",
 		"occurredAt":  int64(1),
 		"description": "__bootstrap_failed__",
@@ -162,14 +164,14 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 	}
 
 	kcfg := commoncfg.Kafka{
-		Enabled:           true,
-		Brokers:           brokers,
-		UpadateLinksTopic: topicUpdates,
-		FailedLinksTopic:  topicFailed,
-		DLQTopic:          topicDLQ,
-		SchemaRegistryURL: srv.URL,
-		UpdateSubject:     "u",
-		FailedSubject:     "f",
+		Enabled:                true,
+		Brokers:                brokers,
+		ProcessedUpdatesTopic:  topicProcessed,
+		FailedLinksTopic:       topicFailed,
+		DLQTopic:               topicDLQ,
+		SchemaRegistryURL:      srv.URL,
+		ProcessedUpdateSubject: "p",
+		FailedSubject:          "f",
 	}
 
 	co, err := NewConsumer(kcfg, ccfg, sender, nil)
@@ -188,8 +190,8 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 		select {
 		case msg := <-sent:
 			found[msg] = struct{}{}
-		case err := <-errCh:
-			t.Fatalf("consumer stopped early: err=%v found=%v", err, found)
+		case rerr := <-errCh:
+			t.Fatalf("consumer stopped early: err=%v found=%v", rerr, found)
 		case <-timeout.C:
 			t.Fatalf("timeout; found=%v", found)
 		}
@@ -199,8 +201,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 	cancel()
 
 	select {
-	case err := <-errCh:
-		_ = err
+	case <-errCh:
 	case <-time.After(30 * time.Second):
 		t.Fatal("consumer goroutine did not exit")
 	}

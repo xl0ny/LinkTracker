@@ -183,7 +183,7 @@ func (c *Client) checkRepo(ctx context.Context, ref ghRef, since time.Time) (dom
 			}
 		}
 		desc := formatGitHubUpdate(kind, it.Title, it.User.Login, it.CreatedAt, it.Body, link)
-		updates = append(updates, domain.LinkCheckUpdate{Description: desc, At: it.CreatedAt})
+		updates = append(updates, domain.LinkCheckUpdate{Description: desc, Author: it.User.Login, At: it.CreatedAt})
 	}
 	if len(updates) == 0 {
 		return domain.LinkCheckOutcome{Changed: false, Latest: watermark}, nil
@@ -248,6 +248,7 @@ func (c *Client) checkIssueOrPull(ctx context.Context, ref ghRef, since time.Tim
 		Changed:     true,
 		Latest:      newest.CreatedAt,
 		Description: desc,
+		Author:      newest.User.Login,
 	}, nil
 }
 

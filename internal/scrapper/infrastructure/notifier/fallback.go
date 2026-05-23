@@ -19,8 +19,8 @@ func NewFallback(primary, fallback application.BotNotifier) *Fallback {
 	return &Fallback{primary: primary, fallback: fallback}
 }
 
-func (f *Fallback) Notify(ctx context.Context, chatID int64, link domain.Link, description string) error {
-	err := f.primary.Notify(ctx, chatID, link, description)
+func (f *Fallback) Notify(ctx context.Context, chatID int64, link domain.Link, description, author string) error {
+	err := f.primary.Notify(ctx, chatID, link, description, author)
 	if err == nil {
 		return nil
 	}
@@ -28,7 +28,7 @@ func (f *Fallback) Notify(ctx context.Context, chatID int64, link domain.Link, d
 		slog.Int64("chat_id", chatID),
 		slog.String("url", link.URL),
 		slog.String("error", err.Error()))
-	fbErr := f.fallback.Notify(ctx, chatID, link, description)
+	fbErr := f.fallback.Notify(ctx, chatID, link, description, author)
 	if fbErr != nil {
 		return fmt.Errorf("notify: http: %w; kafka: %w", err, fbErr)
 	}

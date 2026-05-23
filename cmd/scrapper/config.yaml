@@ -1,4 +1,5 @@
-bot_url: "http://localhost:8081"
+# bot_url: "http://localhost:8081"
+bot_url: "http://localhost:9999"   # для проверки agent-а, чтобы был fallback на kafka
 port: "8080"
 
 access_type: "SQL" # SQL | ORM
@@ -20,32 +21,32 @@ scheduler:
   workers: 4
 
 kafka:
-  enabled: true                              # true => при недоступности HTTP-бота уведомления уходят в Kafka (fallback)
-  brokers:                                   # bootstrap.servers; перечисляем все 3 для отказоустойчивости, клиент сам выберет рабочий
+  enabled: true
+  brokers:
     - "localhost:19092"
     - "localhost:29092"
     - "localhost:39092"
-  links_topic: "link-updates"                # топик основного потока уведомлений; имя совпадает с тем, что слушает бот
-  failed_links_topic: "failed-links"         # топик для уведомлений о неуспешных проверках ссылок
-  dlq_topic: "link-updates-dlq"              # имя DLQ топика; на стороне scrapper не используется напрямую, нужен только боту
+  raw_updates_topic: "link.raw-updates"          # scrapper -> AI Agent
+  failed_links_topic: "failed-links"
+  dlq_topic: "link.raw-updates-dlq"              # на стороне scrapper не используется
   schema_registry_url: "http://localhost:18081"
-  update_subject: "link-update-event-value"
+  raw_update_subject: "link-raw-update-event-value"
   failed_subject: "failed-links-event-value"
 
   producer:
-    mode: "outbox"                           # direct => писать прямо в Kafka из notifier; outbox => писать в outbox-таблицу + публишер
-    producer_client: "scrapper-producer"     # client.id; помечает наши соединения в Kafka UI и логах брокера
-    write_timeout: "5s"                      # таймаут на одну попытку отправки батча; больше => дольше ждём при падении сети
-    required_ack: -1                         # acks=all: запись подтверждается только после фиксации в min.insync.replicas (=2 в кластере)
-    max_attempts: 5                          # сколько раз kafka-go повторит отправку до возврата ошибки наружу (защищает от ребалансов)
+    mode: "outbox"                               # direct => писать прямо в Kafka из notifier; outbox => writer-таблица + публишер
+    producer_client: "scrapper-producer"
+    write_timeout: "5s"
+    required_ack: -1
+    max_attempts: 5
 
-    outbox:                                  # настройки публишера Transactional Outbox (используются только при mode=outbox)
-      poll_interval: "200ms"                 # как часто публишер опрашивает таблицу outbox; меньше => ниже latency, выше нагрузка на БД
-      batch_size: 50                         # сколько pending-строк забирать за один тик; компромисс между throughput и блокировкой
-      lock_for: "30s"                        # на сколько прячем уже взятую строку через available_at; если паблишер упадёт — её через это время перезаберёт другой
-      max_attempts: 5                        # после стольких неудачных попыток отправки строка получает status='failed' и больше не ретраится
-      base_backoff: "500ms"                  # начальная задержка экспоненциального бэкоффа между ретраями одной строки
-      max_backoff: "1m"                      # верхняя граница бэкоффа; чтобы 5-я попытка не ушла на сутки
+    outbox:
+      poll_interval: "200ms"
+      batch_size: 50
+      lock_for: "30s"
+      max_attempts: 5
+      base_backoff: "500ms"
+      max_backoff: "1m"
 
 resilience:
   http:
@@ -53,8 +54,8 @@ resilience:
   retry:
     max_attempts: 3
     delay: "200ms"
-    backoff: "constant"   # constant | exponential
-    max_delay: "0s"       # верхняя граница для exponential (0 = без ограничения)
+    backoff: "constant"
+    max_delay: "0s"
     retryable_statuses: [500, 502, 503, 504]
   circuit_breaker:
     sliding_window_size: 10

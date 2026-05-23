@@ -7,13 +7,19 @@ type Kafka struct {
 
 	Brokers []string `yaml:"brokers" validate:"required,min=1,dive,hostname_port"`
 
-	UpadateLinksTopic string `yaml:"links_topic" validate:"required"`
+	UpadateLinksTopic string `yaml:"links_topic"`
 	FailedLinksTopic  string `yaml:"failed_links_topic" validate:"required"`
 	DLQTopic          string `yaml:"dlq_topic" validate:"required"`
 
+	RawUpdatesTopic       string `yaml:"raw_updates_topic"`
+	ProcessedUpdatesTopic string `yaml:"processed_updates_topic"`
+
 	SchemaRegistryURL string `yaml:"schema_registry_url"`
-	UpdateSubject     string `yaml:"update_subject"` // link-updates-value
-	FailedSubject     string `yaml:"failed_subject"` // failed-links-value
+	UpdateSubject     string `yaml:"update_subject"`
+	FailedSubject     string `yaml:"failed_subject"`
+
+	RawUpdateSubject       string `yaml:"raw_update_subject"`
+	ProcessedUpdateSubject string `yaml:"processed_update_subject"`
 }
 
 type KafkaConsumer struct {

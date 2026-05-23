@@ -25,8 +25,9 @@ type NotifierRepository interface {
 
 type Notifier struct {
 	repo        NotifierRepository
-	enc         *registry.Encoder
-	updateTopic string
+	rawEnc      *registry.SingleEncoder
+	failedEnc   *registry.SingleEncoder
+	rawTopic    string
 	failedTopic string
 }
 
@@ -34,44 +35,51 @@ func NewNotifier(ctx context.Context, repo NotifierRepository, k commoncfg.Kafka
 	if k.SchemaRegistryURL == "" {
 		return nil, errors.New("outbox-notifier: schema_registry_url required")
 	}
-	enc, err := registry.NewEncoder(ctx, k.SchemaRegistryURL, k.UpdateSubject, k.FailedSubject,
-		scrapperkafka.UpdateAvroSchemaPath, scrapperkafka.FailedAvroSchemaPath)
+	if k.RawUpdateSubject == "" || k.FailedSubject == "" {
+		return nil, errors.New("outbox-notifier: raw_update_subject and failed_subject required")
+	}
+	if k.RawUpdatesTopic == "" || k.FailedLinksTopic == "" {
+		return nil, errors.New("outbox-notifier: raw_updates_topic and failed_links_topic required")
+	}
+	rawEnc, err := registry.NewSingleEncoder(ctx, k.SchemaRegistryURL, k.RawUpdateSubject, scrapperkafka.RawUpdateAvroSchemaPath)
 	if err != nil {
-		return nil, fmt.Errorf("outbox-notifier: schema registry encoder: %w", err)
+		return nil, fmt.Errorf("outbox-notifier: register raw encoder: %w", err)
+	}
+	failedEnc, err := registry.NewSingleEncoder(ctx, k.SchemaRegistryURL, k.FailedSubject, scrapperkafka.FailedAvroSchemaPath)
+	if err != nil {
+		return nil, fmt.Errorf("outbox-notifier: register failed encoder: %w", err)
 	}
 	return &Notifier{
 		repo:        repo,
-		enc:         enc,
-		updateTopic: k.UpadateLinksTopic,
+		rawEnc:      rawEnc,
+		failedEnc:   failedEnc,
+		rawTopic:    k.RawUpdatesTopic,
 		failedTopic: k.FailedLinksTopic,
 	}, nil
 }
 
-func (n *Notifier) Notify(ctx context.Context, chatID int64, link domain.Link, description string) error {
-	var descriptionValue any
-	if description != "" {
-		descriptionValue = map[string]any{"string": description}
-	}
-
+func (n *Notifier) Notify(ctx context.Context, chatID int64, link domain.Link, description, author string) error {
 	eventID := uuid.NewString()
 	native := map[string]any{
 		"eventId":     eventID,
 		"occurredAt":  time.Now().UTC().UnixMilli(),
 		"url":         link.URL,
-		"description": descriptionValue,
+		"description": description,
+		"author":      author,
+		"tgChatIds":   []any{chatID},
 	}
-	payload, err := n.enc.EncodeUpdate(native)
+	payload, err := n.rawEnc.Encode(native)
 	if err != nil {
-		return fmt.Errorf("outbox-notifier: encode update: %w", err)
+		return fmt.Errorf("outbox-notifier: encode raw update: %w", err)
 	}
 
 	if savErr := n.repo.SaveOutbox(ctx, domain.OutboxEvent{
 		EventID: eventID,
-		Topic:   n.updateTopic,
+		Topic:   n.rawTopic,
 		Key:     []byte(strconv.FormatInt(chatID, 10)),
 		Payload: payload,
 	}); savErr != nil {
-		return fmt.Errorf("outbox-notifier: save update event: %w", savErr)
+		return fmt.Errorf("outbox-notifier: save raw event: %w", savErr)
 	}
 	return nil
 }
@@ -88,7 +96,7 @@ func (n *Notifier) NotifyFailedLinks(ctx context.Context, chatID int64, links []
 		"occurredAt":  time.Now().UTC().UnixMilli(),
 		"description": description,
 	}
-	payload, err := n.enc.EncodeFailed(native)
+	payload, err := n.failedEnc.Encode(native)
 	if err != nil {
 		return fmt.Errorf("outbox-notifier: encode failed: %w", err)
 	}

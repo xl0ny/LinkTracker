@@ -37,13 +37,13 @@ func TestBuildNotifier_kafkaEnabledUsesHTTPWithFallback(t *testing.T) {
 
 	var cfg config.Config
 	cfg.Kafka.Kafka.Enabled = true
-	cfg.Kafka.Producer.Mode = "direct"
+	cfg.Kafka.Producer.Mode = kafkaProducerModeDirect
 	cfg.Kafka.Kafka.Brokers = []string{"localhost:19092"}
-	cfg.Kafka.Kafka.UpadateLinksTopic = "link-updates"
+	cfg.Kafka.Kafka.RawUpdatesTopic = "link.raw-updates"
 	cfg.Kafka.Kafka.FailedLinksTopic = "failed-links"
-	cfg.Kafka.Kafka.DLQTopic = "link-updates-dlq"
+	cfg.Kafka.Kafka.DLQTopic = "link.raw-updates-dlq"
 	cfg.Kafka.Kafka.SchemaRegistryURL = "http://localhost:18081"
-	cfg.Kafka.Kafka.UpdateSubject = "link-update-event-value"
+	cfg.Kafka.Kafka.RawUpdateSubject = "link-raw-update-event-value"
 	cfg.Kafka.Kafka.FailedSubject = "failed-links-event-value"
 	cfg.Kafka.Producer.ProducerClient = "test"
 	cfg.Kafka.Producer.WriteTimeout = time.Second

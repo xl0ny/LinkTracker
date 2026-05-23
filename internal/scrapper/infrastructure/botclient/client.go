@@ -18,7 +18,7 @@ func NewNotifier(apiClient *ClientWithResponses) *client {
 	return &client{apiClient: apiClient}
 }
 
-func (c *client) Notify(ctx context.Context, chatID int64, link domain.Link, description string) error {
+func (c *client) Notify(ctx context.Context, chatID int64, link domain.Link, description, _ string) error {
 	chatIDs := []int64{chatID}
 	req := LinkUpdate{
 		Url:       &link.URL,

@@ -14,13 +14,14 @@ help:
 	@$(foreach mod,$(MODULES),echo "  \033[36mmake build_$(mod)\033[0m - Build $(mod) module";)
 	@echo "  \033[36mmake test\033[0m - Run all tests"
 	@echo "  \033[36mmake test-integration\033[0m - DB integration tests (Docker / Testcontainers)"
-	@echo "  \033[36mmake run-all\033[0m - Run bot and scrapper together (Ctrl+C stops both)"
+	@echo "  \033[36mmake run-all\033[0m - Run bot, scrapper and ai-agent together (Ctrl+C stops all)"
+	@echo "  \033[36mmake run-bot\033[0m / \033[36mrun-scrapper\033[0m / \033[36mrun-agent\033[0m - Run a single service"
 	@echo "  \033[36mmake compose-db\033[0m - Postgres via Docker Compose (локальная разработка по ДЗ)"
 	@echo "  \033[36mmake compose-migrate\033[0m - Применить SQL-миграции к compose-Postgres (отдельный шаг по ДЗ)"
 	@echo "  \033[36mmake compose-kafka\033[0m - Kafka KRaft (3 брокера) + Kafka UI + Schema Registry + создать топики"
 	@echo "  \033[36mmake compose-kafka-up\033[0m - Только 3 брокера Kafka (без UI и без создания топиков)"
 	@echo "  \033[36mmake compose-kafka-broker BROKER=1\033[0m - Поднять только один брокер (1, 2 или 3)"
-	@echo "  \033[36mmake compose-kafka-init\033[0m - Создать/проверить топики (link-updates, failed-links, link-updates-dlq)"
+	@echo "  \033[36mmake compose-kafka-init\033[0m - Создать/проверить топики (link.raw-updates, link.processed-updates, failed-links, *-dlq)"
 	@echo "  \033[36mmake compose-kafka-ui\033[0m - Запустить Kafka UI (http://localhost:8085)"
 	@echo "  \033[36mmake compose-kafka-down\033[0m - Остановить Kafka кластер и UI (volume'ы НЕ удаляются)"
 	@echo "  \033[36mmake compose-kafka-purge\033[0m - Полная очистка кластера: контейнеры + volume'ы (потеря данных)"
@@ -59,7 +60,7 @@ test:
 
 .PHONY: test-integration
 test-integration:
-	@go test -tags=integration -count=1 -v ./internal/scrapper/infrastructure/db/... ./internal/bot/transport/kafka/... ./internal/scrapper/infrastructure/valkey/...
+	@go test -tags=integration -count=1 -v ./internal/scrapper/infrastructure/db/... ./internal/bot/transport/kafka/... ./internal/agent/infrastructure/kafka/... ./internal/scrapper/infrastructure/valkey/...
 
 .PHONY: lint
 lint:
@@ -86,7 +87,7 @@ god:
 	done
 	@echo "\033[36mgod:\033[0m Avro в Schema Registry..."
 	@$(MAKE) avro-registrate
-	@echo "\033[36mgod:\033[0m бот + скраппер"
+	@echo "\033[36mgod:\033[0m бот + скраппер + ai-agent"
 	@$(MAKE) run-all
 
 .PHONY: run-bot
@@ -99,13 +100,19 @@ run-scrapper:
 	@echo "Running scrapper"
 	@go run ./cmd/scrapper/main.go
 
+.PHONY: run-agent
+run-agent:
+	@echo "Running ai-agent"
+	@go run ./cmd/agent/main.go
+
 .PHONY: run-all
 run-all:
-	@echo "Running bot and scrapper (Ctrl+C stops both)"
-	@trap 'kill $$BOT $$SCRAPPER 2>/dev/null; exit 130' INT TERM; \
+	@echo "Running bot, scrapper and agent (Ctrl+C stops all)"
+	@trap 'kill $$BOT $$SCRAPPER $$AGENT 2>/dev/null; exit 130' INT TERM; \
 	go run ./cmd/bot/main.go & BOT=$$!; \
 	go run ./cmd/scrapper/main.go & SCRAPPER=$$!; \
-	wait $$BOT $$SCRAPPER
+	go run ./cmd/agent/main.go & AGENT=$$!; \
+	wait $$BOT $$SCRAPPER $$AGENT
 
 .PHONY: generate-api
 generate-api:
@@ -186,9 +193,13 @@ avro-registrate:
 	@command -v curl >/dev/null 2>&1 || (echo "curl is required" && exit 1)
 	@command -v python3 >/dev/null 2>&1 || (echo "python3 is required" && exit 1)
 	@echo "Registering Avro schemas in Schema Registry: $(SCHEMA_REGISTRY_URL)"
-	@curl -fsS -X POST "$(SCHEMA_REGISTRY_URL)/subjects/link-update-event-value/versions" \
+	@curl -fsS -X POST "$(SCHEMA_REGISTRY_URL)/subjects/link-raw-update-event-value/versions" \
 		-H "Content-Type: application/vnd.schemaregistry.v1+json" \
-		--data "$$(python3 -c 'import json, pathlib; print(json.dumps({"schema": pathlib.Path("schemas/avro/link_update_event.avsc").read_text()}))')"
+		--data "$$(python3 -c 'import json, pathlib; print(json.dumps({"schema": pathlib.Path("schemas/avro/link_raw_update_event.avsc").read_text()}))')"
+	@echo
+	@curl -fsS -X POST "$(SCHEMA_REGISTRY_URL)/subjects/link-processed-update-event-value/versions" \
+		-H "Content-Type: application/vnd.schemaregistry.v1+json" \
+		--data "$$(python3 -c 'import json, pathlib; print(json.dumps({"schema": pathlib.Path("schemas/avro/link_processed_update_event.avsc").read_text()}))')"
 	@echo
 	@curl -fsS -X POST "$(SCHEMA_REGISTRY_URL)/subjects/failed-links-event-value/versions" \
 		-H "Content-Type: application/vnd.schemaregistry.v1+json" \

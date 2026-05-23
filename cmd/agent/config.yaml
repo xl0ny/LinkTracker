@@ -1,0 +1,51 @@
+port: "8082"
+
+logging:
+  mode: "INFO"
+
+kafka:
+  enabled: true
+  brokers:
+    - "localhost:19092"
+    - "localhost:29092"
+    - "localhost:39092"
+  raw_updates_topic: "link.raw-updates"
+  processed_updates_topic: "link.processed-updates"
+  failed_links_topic: "failed-links"
+  dlq_topic: "link.raw-updates-dlq"
+  schema_registry_url: "http://localhost:18081"
+  raw_update_subject: "link-raw-update-event-value"
+  processed_update_subject: "link-processed-update-event-value"
+
+  consumer:
+    consumer_group: "ai-agent-raw-updates"
+    consumer_client_id: "agent-consumer"
+    read_timeout: "1s"
+    commit_interval: "0s"
+    start_offset: "earliest"
+    process_retries: 3
+    retry_delay: "500ms"
+
+  producer:
+    producer_client: "agent-producer"
+    write_timeout: "5s"
+    required_ack: -1
+    max_attempts: 5
+
+ai-agent:
+  filtering:
+    stop-words:
+      - spam
+      - ads
+      - promo
+    excluded-authors:
+      - bot-user
+    min-length: 20
+  summarization:
+    mode: "huggingface"        # stub | huggingface
+    threshold: 500
+    huggingface:
+      api_url: "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+      max_length: 130
+      min_length: 30
+      timeout: "15s"

@@ -148,26 +148,33 @@ func soLinkOrQuestion(link, questionURL string) string {
 }
 
 func soOutcomeFromBest(best *soCandidate, q questionItem, questionURL string) domain.LinkCheckOutcome {
-	var desc string
-	var latest time.Time
+	var (
+		desc   string
+		author string
+		latest time.Time
+	)
 	switch best.kind {
 	case soKindAnswer:
 		latest = time.Unix(best.answer.CreationDate, 0).UTC()
 		link := soLinkOrQuestion(best.answer.Link, questionURL)
-		desc = formatSOUpdate("новый ответ", q.Title, best.answer.Owner.DisplayName, latest, best.answer.Body, link)
+		author = best.answer.Owner.DisplayName
+		desc = formatSOUpdate("новый ответ", q.Title, author, latest, best.answer.Body, link)
 	case soKindQuestionComment:
 		latest = time.Unix(best.comment.CreationDate, 0).UTC()
 		link := soLinkOrQuestion(best.comment.Link, questionURL)
-		desc = formatSOUpdate("новый комментарий к вопросу", q.Title, best.comment.Owner.DisplayName, latest, best.comment.Body, link)
+		author = best.comment.Owner.DisplayName
+		desc = formatSOUpdate("новый комментарий к вопросу", q.Title, author, latest, best.comment.Body, link)
 	case soKindAnswerComment:
 		latest = time.Unix(best.comment.CreationDate, 0).UTC()
 		link := soLinkOrQuestion(best.comment.Link, questionURL)
-		desc = formatSOUpdate("новый комментарий к ответу", q.Title, best.comment.Owner.DisplayName, latest, best.comment.Body, link)
+		author = best.comment.Owner.DisplayName
+		desc = formatSOUpdate("новый комментарий к ответу", q.Title, author, latest, best.comment.Body, link)
 	}
 	return domain.LinkCheckOutcome{
 		Changed:     true,
 		Latest:      latest,
 		Description: desc,
+		Author:      author,
 	}
 }
 

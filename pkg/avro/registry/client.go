@@ -15,6 +15,8 @@ import (
 	"github.com/linkedin/goavro/v2"
 )
 
+const schemaRegistryJSONField = "schema"
+
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
@@ -42,7 +44,7 @@ type schemaByIDResponse struct {
 
 func (c *Client) RegisterSchema(ctx context.Context, subject, schemaJSON string) (int32, error) {
 	url := fmt.Sprintf("%s/subjects/%s/versions", c.baseURL, subject)
-	body, err := json.Marshal(map[string]string{"schema": schemaJSON})
+	body, err := json.Marshal(map[string]string{schemaRegistryJSONField: schemaJSON})
 	if err != nil {
 		return 0, fmt.Errorf("schema registry: marshal register body: %w", err)
 	}
@@ -119,64 +121,41 @@ func (c *Client) CodecForID(ctx context.Context, schemaID int32) (*goavro.Codec,
 	return codec, nil
 }
 
-type Encoder struct {
-	client      *Client
-	updateCodec *goavro.Codec
-	failedCodec *goavro.Codec
-	updateID    int32
-	failedID    int32
+type SingleEncoder struct {
+	codec *goavro.Codec
+	id    int32
 }
 
-func NewEncoder(ctx context.Context, baseURL, updateSubject, failedSubject, updateSchemaPath, failedSchemaPath string) (*Encoder, error) {
+func NewSingleEncoder(ctx context.Context, baseURL, subject, schemaPath string) (*SingleEncoder, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, errors.New("schema registry: empty base URL")
 	}
-	updateSchema, err := os.ReadFile(updateSchemaPath)
-	if err != nil {
-		return nil, fmt.Errorf("schema registry: read update schema: %w", err)
+	if strings.TrimSpace(subject) == "" {
+		return nil, errors.New("schema registry: empty subject")
 	}
-	failedSchema, err := os.ReadFile(failedSchemaPath)
+	schemaBytes, err := os.ReadFile(schemaPath)
 	if err != nil {
-		return nil, fmt.Errorf("schema registry: read failed schema: %w", err)
+		return nil, fmt.Errorf("schema registry: read schema %q: %w", schemaPath, err)
 	}
-	client := NewClient(baseURL)
-	updateCodec, err := goavro.NewCodec(string(updateSchema))
+	codec, err := goavro.NewCodec(string(schemaBytes))
 	if err != nil {
-		return nil, fmt.Errorf("update codec: %w", err)
+		return nil, fmt.Errorf("schema codec: %w", err)
 	}
-	failedCodec, err := goavro.NewCodec(string(failedSchema))
+	id, err := NewClient(baseURL).RegisterSchema(ctx, subject, string(schemaBytes))
 	if err != nil {
-		return nil, fmt.Errorf("failed codec: %w", err)
+		return nil, fmt.Errorf("register subject %q: %w", subject, err)
 	}
-	ui, err := client.RegisterSchema(ctx, updateSubject, string(updateSchema))
-	if err != nil {
-		return nil, fmt.Errorf("register update subject: %w", err)
-	}
-	fi, err := client.RegisterSchema(ctx, failedSubject, string(failedSchema))
-	if err != nil {
-		return nil, fmt.Errorf("register failed subject: %w", err)
-	}
-	return &Encoder{
-		client:      client,
-		updateCodec: updateCodec,
-		failedCodec: failedCodec,
-		updateID:    ui,
-		failedID:    fi,
-	}, nil
+	return &SingleEncoder{codec: codec, id: id}, nil
 }
 
-func (e *Encoder) EncodeUpdate(native map[string]any) ([]byte, error) {
-	datum, err := e.updateCodec.BinaryFromNative(nil, native)
+func (e *SingleEncoder) Encode(native map[string]any) ([]byte, error) {
+	datum, err := e.codec.BinaryFromNative(nil, native)
 	if err != nil {
-		return nil, fmt.Errorf("encode update native: %w", err)
+		return nil, fmt.Errorf("encode native: %w", err)
 	}
-	return EncodeConfluent(e.updateID, datum), nil
+	return EncodeConfluent(e.id, datum), nil
 }
 
-func (e *Encoder) EncodeFailed(native map[string]any) ([]byte, error) {
-	datum, err := e.failedCodec.BinaryFromNative(nil, native)
-	if err != nil {
-		return nil, fmt.Errorf("encode failed native: %w", err)
-	}
-	return EncodeConfluent(e.failedID, datum), nil
+func (e *SingleEncoder) SchemaID() int32 {
+	return e.id
 }

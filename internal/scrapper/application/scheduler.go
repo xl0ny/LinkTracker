@@ -17,7 +17,7 @@ type linkChecker interface {
 }
 
 type BotNotifier interface {
-	Notify(ctx context.Context, chatID int64, link domain.Link, description string) error
+	Notify(ctx context.Context, chatID int64, link domain.Link, description, author string) error
 	NotifyFailedLinks(ctx context.Context, chatID int64, links []string) error
 }
 
@@ -129,13 +129,13 @@ func (s *Scheduler) processLink(ctx context.Context, sub domain.SubscribedLink) 
 	if !out.Changed {
 		return nil
 	}
-	return s.notifyAndCommit(ctx, sub, out.Description, out.Latest)
+	return s.notifyAndCommit(ctx, sub, out.Description, out.Author, out.Latest)
 }
 
 func (s *Scheduler) notifyUpdatesAndCommit(ctx context.Context, sub domain.SubscribedLink, updates []domain.LinkCheckUpdate, latest time.Time) error {
 	work := func(ctx context.Context) error {
 		for _, u := range updates {
-			if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, u.Description); nfErr != nil {
+			if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, u.Description, u.Author); nfErr != nil {
 				return fmt.Errorf("notify update: %w", nfErr)
 			}
 		}
@@ -153,9 +153,9 @@ func (s *Scheduler) notifyUpdatesAndCommit(ctx context.Context, sub domain.Subsc
 	return nil
 }
 
-func (s *Scheduler) notifyAndCommit(ctx context.Context, sub domain.SubscribedLink, description string, latest time.Time) error {
+func (s *Scheduler) notifyAndCommit(ctx context.Context, sub domain.SubscribedLink, description, author string, latest time.Time) error {
 	work := func(ctx context.Context) error {
-		if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, description); nfErr != nil {
+		if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, description, author); nfErr != nil {
 			return fmt.Errorf("notify update: %w", nfErr)
 		}
 		if upErr := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, latest); upErr != nil {

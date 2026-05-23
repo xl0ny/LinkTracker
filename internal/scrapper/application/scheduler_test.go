@@ -88,7 +88,7 @@ type schedulerNotifierStub struct {
 	notifyErrByURL        map[string]error
 }
 
-func (n *schedulerNotifierStub) Notify(_ context.Context, _ int64, link domain.Link, _ string) error {
+func (n *schedulerNotifierStub) Notify(_ context.Context, _ int64, link domain.Link, _, _ string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.notifyCalls++

@@ -16,28 +16,36 @@ import (
 )
 
 const (
-	UpdateAvroSchemaPath = "schemas/avro/link_update_event.avsc"
-	FailedAvroSchemaPath = "schemas/avro/failed_links_event.avsc"
+	RawUpdateAvroSchemaPath = "schemas/avro/link_raw_update_event.avsc"
+	FailedAvroSchemaPath    = "schemas/avro/failed_links_event.avsc"
 )
 
 // Notifier sends link events directly to Kafka (non-outbox producer mode).
 type Notifier struct {
-	updateWriter *kafkago.Writer
+	rawWriter    *kafkago.Writer
 	failedWriter *kafkago.Writer
-	enc          *registry.Encoder
+	rawEnc       *registry.SingleEncoder
+	failedEnc    *registry.SingleEncoder
 }
 
 func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.KafkaProducer) (*Notifier, error) {
 	if kconfig.SchemaRegistryURL == "" {
 		return nil, errors.New("kafka-notifier: schema_registry_url required")
 	}
-	if kconfig.UpdateSubject == "" || kconfig.FailedSubject == "" {
-		return nil, errors.New("kafka-notifier: update_subject and failed_subject required")
+	if kconfig.RawUpdateSubject == "" || kconfig.FailedSubject == "" {
+		return nil, errors.New("kafka-notifier: raw_update_subject and failed_subject required")
 	}
-	enc, err := registry.NewEncoder(ctx, kconfig.SchemaRegistryURL, kconfig.UpdateSubject, kconfig.FailedSubject,
-		UpdateAvroSchemaPath, FailedAvroSchemaPath)
+	if kconfig.RawUpdatesTopic == "" || kconfig.FailedLinksTopic == "" {
+		return nil, errors.New("kafka-notifier: raw_updates_topic and failed_links_topic required")
+	}
+
+	rawEnc, err := registry.NewSingleEncoder(ctx, kconfig.SchemaRegistryURL, kconfig.RawUpdateSubject, RawUpdateAvroSchemaPath)
 	if err != nil {
-		return nil, fmt.Errorf("kafka-notifier: schema registry encoder: %w", err)
+		return nil, fmt.Errorf("kafka-notifier: register raw encoder: %w", err)
+	}
+	failedEnc, err := registry.NewSingleEncoder(ctx, kconfig.SchemaRegistryURL, kconfig.FailedSubject, FailedAvroSchemaPath)
+	if err != nil {
+		return nil, fmt.Errorf("kafka-notifier: register failed encoder: %w", err)
 	}
 
 	dialer := &kafkago.Dialer{ClientID: pconfig.ProducerClient}
@@ -49,39 +57,37 @@ func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.Kafka
 		Dialer:       dialer,
 	}
 
-	updateCfg, failedCfg := base, base
-	updateCfg.Topic, failedCfg.Topic = kconfig.UpadateLinksTopic, kconfig.FailedLinksTopic
+	rawCfg, failedCfg := base, base
+	rawCfg.Topic, failedCfg.Topic = kconfig.RawUpdatesTopic, kconfig.FailedLinksTopic
 
 	return &Notifier{
-		updateWriter: kafkago.NewWriter(updateCfg),
+		rawWriter:    kafkago.NewWriter(rawCfg),
 		failedWriter: kafkago.NewWriter(failedCfg),
-		enc:          enc,
+		rawEnc:       rawEnc,
+		failedEnc:    failedEnc,
 	}, nil
 }
 
-func (p *Notifier) Notify(ctx context.Context, chatID int64, link domain.Link, description string) error {
-	var descriptionValue any
-	if description != "" {
-		descriptionValue = map[string]any{"string": description}
-	}
-
+func (p *Notifier) Notify(ctx context.Context, chatID int64, link domain.Link, description, author string) error {
 	native := map[string]any{
 		"eventId":     uuid.NewString(),
 		"occurredAt":  time.Now().UTC().UnixMilli(),
 		"url":         link.URL,
-		"description": descriptionValue,
+		"description": description,
+		"author":      author,
+		"tgChatIds":   []any{chatID},
 	}
-	value, err := p.enc.EncodeUpdate(native)
+	value, err := p.rawEnc.Encode(native)
 	if err != nil {
-		return fmt.Errorf("kafka-notifier: encode update payload: %w", err)
+		return fmt.Errorf("kafka-notifier: encode raw payload: %w", err)
 	}
 
-	err = p.updateWriter.WriteMessages(ctx, kafkago.Message{
+	err = p.rawWriter.WriteMessages(ctx, kafkago.Message{
 		Key:   []byte(strconv.FormatInt(chatID, 10)),
 		Value: value,
 	})
 	if err != nil {
-		return fmt.Errorf("kafka-notifier: write update kafka message: %w", err)
+		return fmt.Errorf("kafka-notifier: write raw kafka message: %w", err)
 	}
 	return nil
 }
@@ -97,7 +103,7 @@ func (p *Notifier) NotifyFailedLinks(ctx context.Context, chatID int64, links []
 		"occurredAt":  time.Now().UTC().UnixMilli(),
 		"description": description,
 	}
-	value, err := p.enc.EncodeFailed(native)
+	value, err := p.failedEnc.Encode(native)
 	if err != nil {
 		return fmt.Errorf("kafka-notifier: encode failed avro payload: %w", err)
 	}

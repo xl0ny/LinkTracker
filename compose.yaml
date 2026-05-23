@@ -129,15 +129,23 @@ services:
             "$$@"
         }
 
-        create_topic link-updates       3 3 \
+        create_topic link.raw-updates       3 3 \
           --config min.insync.replicas=2 \
           --config retention.ms=604800000
 
-        create_topic failed-links       3 3 \
+        create_topic link.processed-updates 3 3 \
           --config min.insync.replicas=2 \
           --config retention.ms=604800000
 
-        create_topic link-updates-dlq   1 3 \
+        create_topic failed-links           3 3 \
+          --config min.insync.replicas=2 \
+          --config retention.ms=604800000
+
+        create_topic link.raw-updates-dlq   1 3 \
+          --config min.insync.replicas=2 \
+          --config retention.ms=2592000000
+
+        create_topic link.processed-updates-dlq 1 3 \
           --config min.insync.replicas=2 \
           --config retention.ms=2592000000
 

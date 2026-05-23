@@ -1,0 +1,46 @@
+{
+  "type": "record",
+  "name": "LinkRawUpdateEvent",
+  "namespace": "linktracker.agent",
+  "doc": "Raw link update event consumed by AI Agent.",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "Unique event identifier for idempotency and tracing."
+    },
+    {
+      "name": "occurredAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "When the event was created."
+    },
+    {
+      "name": "url",
+      "type": "string",
+      "doc": "Tracked link URL."
+    },
+    {
+      "name": "description",
+      "type": "string",
+      "doc": "Update description text."
+    },
+    {
+      "name": "author",
+      "type": "string",
+      "default": "",
+      "doc": "Author of the update (GitHub user, SO user, etc)."
+    },
+    {
+      "name": "tgChatIds",
+      "type": {
+        "type": "array",
+        "items": "long"
+      },
+      "default": [],
+      "doc": "Telegram chat ids subscribed to this link."
+    }
+  ]
+}

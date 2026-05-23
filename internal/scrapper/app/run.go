@@ -44,6 +44,8 @@ var (
 	_ Repository = (*orm.Repository)(nil)
 )
 
+const kafkaProducerModeDirect = "direct"
+
 func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -170,10 +172,10 @@ func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.Clien
 
 	mode := strings.ToLower(strings.TrimSpace(cfg.Kafka.Producer.Mode))
 	if mode == "" {
-		mode = "direct"
+		mode = kafkaProducerModeDirect
 	}
 	switch mode {
-	case "direct":
+	case kafkaProducerModeDirect:
 		fallback, err := kafka.NewNotifier(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scrapper: kafka notifier: %w", err)

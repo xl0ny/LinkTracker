@@ -1,7 +1,6 @@
 # LinkTracker
 
 Telegram-бот, который отслеживает изменения на веб-страницах и информирует пользователя о них.
-
 ## Запуск
 
 1. **Секреты в `.env`**:
@@ -9,24 +8,25 @@ Telegram-бот, который отслеживает изменения на �
    - `POSTGRES_PASSWORD`
    - `REDIS_PASSWORD`
    - `VALKEY_PASSWORD`
+   - `HUGGINGFACE_TOKEN` https://huggingface.co/settings/tokens
 
-2. **Инфраструктура (Docker Compose)**  
-   Postgres: `make compose-db` → `make compose-migrate`.  
-   Kafka KRaft (3 брокера) + топики + Kafka UI + **Schema Registry** + Redis: `make compose-kafka`.  
-   Valkey-кластер (3 ноды): `make compose-valkey`.  
-   Всё разом (Postgres + миграции + Redis + Valkey + Kafka + регистрация Avro + запуск bot/scrapper): `make god`.
+2. **Инфраструктура (Docker Compose)**
+   Postgres: `make compose-db` → `make compose-migrate`.
+   Kafka KRaft (3 брокера) + топики (`link.raw-updates`, `link.processed-updates`, `failed-links`, `*-dlq`) + Kafka UI + **Schema Registry** + Redis: `make compose-kafka`.
+   Valkey-кластер (3 ноды): `make compose-valkey`.
+   Всё разом (Postgres + миграции + Redis + Valkey + Kafka + регистрация Avro + запуск bot/scrapper/agent): `make god`.
 
 3. **Schema Registry** после поднятия кластера: схемы подтягиваются **при старте** scrapper/bot (REST `POST /subjects/.../versions`). Для ручной регистрации: `make avro-registrate` (по умолчанию `SCHEMA_REGISTRY_URL=http://localhost:18081`).
 
-4. **Порты**: бот HTTP `cmd/bot/config.yaml` (`bot_port`), скраппер `cmd/scrapper/config.yaml` (`port`). **Schema Registry**: `http://localhost:18081` (не занимать `:8081` ботом).
+4. **Порты**: бот HTTP — `cmd/bot/config.yaml` (`bot_port`, по умолчанию 8081), scrapper — `cmd/scrapper/config.yaml` (`port`, 8080), AI Agent health-чек — `cmd/agent/config.yaml` (`port`, 8082).
 
-5. **YAML**: `cmd/bot/config.yaml`, `cmd/scrapper/config.yaml` — брокеры Kafka, топики, `schema_registry_url`, `kafka.enabled`, у скраппера `producer.mode` (`direct` | `outbox`).
+5. **Запуск приложений**: `make run-all` либо по одному сервису:
+   - `make run-bot`
+   - `make run-scrapper`
+   - `make run-agent`
+   Либо `make god` для запуска всего
 
-6. Запуск приложений: `make run-all` или `make run-bot` / `make run-scrapper`.
 
 
-Тесты: `go test ./pkg/resilience/... ./internal/scrapper/infrastructure/notifier/...`
 
-### Бонус: exponential backoff (выполнен)
 
-Переключается через конфиг, по умолчанию остаётся constant.

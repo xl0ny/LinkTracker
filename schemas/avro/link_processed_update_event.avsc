@@ -1,0 +1,40 @@
+{
+  "type": "record",
+  "name": "LinkProcessedUpdateEvent",
+  "namespace": "linktracker.agent",
+  "doc": "Processed (filtered + summarized) link update event produced by AI Agent.",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string"
+    },
+    {
+      "name": "occurredAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    },
+    {
+      "name": "url",
+      "type": "string"
+    },
+    {
+      "name": "description",
+      "type": "string"
+    },
+    {
+      "name": "tgChatIds",
+      "type": {
+        "type": "array",
+        "items": "long"
+      },
+      "default": []
+    },
+    {
+      "name": "priority",
+      "type": "string",
+      "default": "HIGH"
+    }
+  ]
+}

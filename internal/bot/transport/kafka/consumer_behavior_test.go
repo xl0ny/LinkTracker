@@ -31,14 +31,7 @@ func TestRetryBusiness_stopsAfterMaxRetries(t *testing.T) {
 
 func TestDecodeUpdate_rejectsGarbageWire(t *testing.T) {
 	c := &Consumer{sr: commonreg.NewClient("http://unused.example")}
-	_, _, err := c.decodeUpdate(context.Background(), kafka.Message{Key: []byte("1"), Value: []byte{0xff}})
-	require.Error(t, err)
-}
-
-func TestDecodeUpdate_rejectsBadKeyNoRetrySemantics(t *testing.T) {
-	// decode errors are categorized outside retryBusiness — this only checks decode returns quickly.
-	c := &Consumer{sr: commonreg.NewClient("http://unused.example")}
-	_, _, err := c.decodeUpdate(context.Background(), kafka.Message{Key: []byte("not-int"), Value: commonreg.EncodeConfluent(1, []byte{1, 2})})
+	_, err := c.decodeUpdate(context.Background(), kafka.Message{Key: []byte("1"), Value: []byte{0xff}})
 	require.Error(t, err)
 }
 
@@ -46,11 +39,11 @@ func TestDecodeUpdate_validConfluent_payload(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
-	updatePath := filepath.Join(repoRoot, "schemas", "avro", "link_update_event.avsc")
-	updateSchema, err := os.ReadFile(updatePath)
+	processedPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
+	processedSchema, err := os.ReadFile(processedPath)
 	require.NoError(t, err)
 
-	srv := httptest.NewServer(schemaRegistryStub(map[int]string{7: string(updateSchema)}))
+	srv := httptest.NewServer(schemaRegistryStub(map[int]string{7: string(processedSchema)}))
 	defer srv.Close()
 
 	ctx := context.Background()
@@ -60,15 +53,15 @@ func TestDecodeUpdate_validConfluent_payload(t *testing.T) {
 	require.NoError(t, err)
 	wire := commonreg.EncodeConfluent(7, raw)
 
-	chID, rec, err := c.decodeUpdate(ctx, kafka.Message{Key: []byte("999"), Value: wire})
+	rec, err := c.decodeUpdate(ctx, kafka.Message{Key: []byte("999"), Value: wire})
 	require.NoError(t, err)
-	require.Equal(t, int64(999), chID)
-	require.Equal(t, "hello", extractOptionalString(rec["description"]))
+	require.Equal(t, "hello", extractString(rec["description"]))
+	require.Equal(t, []int64{42}, extractInt64Slice(rec["tgChatIds"]))
 }
 
 func codecBinaryFromFixture(t *testing.T, repoRoot string) ([]byte, error) {
 	t.Helper()
-	path := filepath.Join(repoRoot, "schemas", "avro", "link_update_event.avsc")
+	path := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
 	schema, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -81,14 +74,15 @@ func codecBinaryFromFixture(t *testing.T, repoRoot string) ([]byte, error) {
 		"eventId":     "evt-1",
 		"occurredAt":  int64(1),
 		"url":         "https://example.com",
-		"description": map[string]any{"string": "hello"},
+		"description": "hello",
+		"tgChatIds":   []any{int64(42)},
+		"priority":    "HIGH",
 	})
 }
 
 func schemaRegistryStub(schemas map[int]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodGet && len(r.URL.Path) > len("/schemas/ids/"):
+		if r.Method == http.MethodGet && len(r.URL.Path) > len("/schemas/ids/") {
 			id := 0
 			if _, err := fmt.Sscanf(r.URL.Path, "/schemas/ids/%d", &id); err != nil || schemas[id] == "" {
 				http.NotFound(w, r)
@@ -96,8 +90,8 @@ func schemaRegistryStub(schemas map[int]string) http.HandlerFunc {
 			}
 			w.Header().Set("Content-Type", "application/vnd.schemaregistry.v1+json")
 			fmt.Fprintf(w, `{"schema":%q}`, schemas[id])
-		default:
-			http.NotFound(w, r)
+			return
 		}
+		http.NotFound(w, r)
 	}
 }
