@@ -33,9 +33,20 @@ type Summarization struct {
 	HuggingFace HuggingFace `yaml:"huggingface"`
 }
 
+type Prioritization struct {
+	HighKeywords []string `yaml:"high-keywords"`
+	LowKeywords  []string `yaml:"low-keywords"`
+}
+
+type Grouping struct {
+	WindowMs int `yaml:"window-ms"`
+}
+
 type AIAgent struct {
-	Filtering     Filtering     `yaml:"filtering"`
-	Summarization Summarization `yaml:"summarization"`
+	Filtering      Filtering      `yaml:"filtering"`
+	Summarization  Summarization  `yaml:"summarization"`
+	Prioritization Prioritization `yaml:"prioritization"`
+	Grouping       Grouping       `yaml:"grouping"`
 }
 
 type Config struct {

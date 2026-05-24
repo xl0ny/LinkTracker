@@ -49,3 +49,16 @@ ai-agent:
       max_length: 130
       min_length: 30
       timeout: "15s"
+  prioritization:
+    high-keywords:
+      - critical
+      - urgent
+      - breaking
+      - security
+    low-keywords:
+      - minor
+      - typo
+      - chore
+      - docs
+  grouping:
+    window-ms: 30000

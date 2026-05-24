@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/agent/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/agent/infrastructure/config"
@@ -37,27 +38,17 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return err
 	}
 
-	processor := application.NewProcessor(filter, sum, cfg.AIAgent.Summarization.Threshold)
+	prioritizer := application.NewPrioritizer(application.PrioritizerConfig{
+		HighKeywords: cfg.AIAgent.Prioritization.HighKeywords,
+		LowKeywords:  cfg.AIAgent.Prioritization.LowKeywords,
+	})
+	processor := application.NewProcessor(filter, sum, cfg.AIAgent.Summarization.Threshold, prioritizer)
 
-	producer, err := agentkafka.NewProducer(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer)
+	_, consumer, closeKafka, err := buildKafkaPipeline(ctx, cfg, processor)
 	if err != nil {
-		return fmt.Errorf("agent run: producer: %w", err)
+		return err
 	}
-	defer func() {
-		if cerr := producer.Close(); cerr != nil {
-			slog.Error("agent run: producer close", slog.String("error", cerr.Error()))
-		}
-	}()
-
-	consumer, err := agentkafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, processor, producer)
-	if err != nil {
-		return fmt.Errorf("agent run: consumer: %w", err)
-	}
-	defer func() {
-		if cerr := consumer.Close(); cerr != nil {
-			slog.Error("agent run: consumer close", slog.String("error", cerr.Error()))
-		}
-	}()
+	defer closeKafka()
 
 	consumerErr := make(chan error, 1)
 	go func() {
@@ -91,6 +82,39 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	<-httpDone
 	return nil
+}
+
+func buildKafkaPipeline(
+	ctx context.Context,
+	cfg *config.Config,
+	processor agentkafka.Processor,
+) (*application.Grouper, *agentkafka.Consumer, func(), error) {
+	producer, err := agentkafka.NewProducer(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("agent run: producer: %w", err)
+	}
+
+	windowMs := cfg.AIAgent.Grouping.WindowMs
+	grouper := application.NewGrouper(producer, application.GrouperConfig{
+		Window: time.Duration(windowMs) * time.Millisecond,
+	})
+	go grouper.Run(ctx)
+
+	consumer, err := agentkafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, processor, grouper)
+	if err != nil {
+		_ = producer.Close()
+		return nil, nil, nil, fmt.Errorf("agent run: consumer: %w", err)
+	}
+
+	closeFn := func() {
+		if cerr := consumer.Close(); cerr != nil {
+			slog.Error("agent run: consumer close", slog.String("error", cerr.Error()))
+		}
+		if cerr := producer.Close(); cerr != nil {
+			slog.Error("agent run: producer close", slog.String("error", cerr.Error()))
+		}
+	}
+	return grouper, consumer, closeFn, nil
 }
 
 func buildSummarizer(cfg *config.Config) (application.Summarizer, error) {

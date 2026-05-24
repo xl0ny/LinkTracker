@@ -22,10 +22,15 @@ func (f *fakeSummarizer) Summarize(_ context.Context, _ string) (string, error) 
 	return f.out, f.err
 }
 
+func newTestProcessor(filter *Filter, sum *fakeSummarizer, threshold int) *Processor {
+	prioritizer := NewPrioritizer(PrioritizerConfig{})
+	return NewProcessor(filter, sum, threshold, prioritizer)
+}
+
 func TestProcessor_FiltersBlockedUpdates(t *testing.T) {
 	filter := NewFilter(FilterConfig{StopWords: []string{"spam"}})
 	sum := &fakeSummarizer{out: "summary"}
-	p := NewProcessor(filter, sum, 10)
+	p := newTestProcessor(filter, sum, 10)
 
 	_, ok, err := p.Process(context.Background(), domain.RawUpdate{
 		Description: "buy now spam offer",
@@ -40,7 +45,7 @@ func TestProcessor_LongTextSummarized(t *testing.T) {
 	filter := NewFilter(FilterConfig{})
 	long := strings.Repeat("a", 600)
 	sum := &fakeSummarizer{out: "short summary"}
-	p := NewProcessor(filter, sum, 500)
+	p := newTestProcessor(filter, sum, 500)
 
 	out, ok, err := p.Process(context.Background(), domain.RawUpdate{
 		EventID:     "e1",
@@ -55,14 +60,14 @@ func TestProcessor_LongTextSummarized(t *testing.T) {
 	require.Equal(t, "short summary", out.Description)
 	require.NotEqual(t, long, out.Description)
 	require.Equal(t, []int64{42}, out.TgChatIDs)
-	require.Equal(t, "HIGH", out.Priority)
+	require.Equal(t, PriorityMedium, out.Priority)
 }
 
 func TestProcessor_ShortTextNotSummarized(t *testing.T) {
 	filter := NewFilter(FilterConfig{})
 	short := "compact update"
 	sum := &fakeSummarizer{out: "should not be used"}
-	p := NewProcessor(filter, sum, 500)
+	p := newTestProcessor(filter, sum, 500)
 
 	out, ok, err := p.Process(context.Background(), domain.RawUpdate{
 		EventID:     "e2",
@@ -81,7 +86,7 @@ func TestProcessor_SummarizerErrorFallsBackToOriginal(t *testing.T) {
 	filter := NewFilter(FilterConfig{})
 	long := strings.Repeat("b", 600)
 	sum := &fakeSummarizer{err: errors.New("boom")}
-	p := NewProcessor(filter, sum, 500)
+	p := newTestProcessor(filter, sum, 500)
 
 	out, ok, err := p.Process(context.Background(), domain.RawUpdate{
 		EventID:     "e3",
@@ -93,4 +98,21 @@ func TestProcessor_SummarizerErrorFallsBackToOriginal(t *testing.T) {
 	require.True(t, ok)
 	require.True(t, sum.called)
 	require.Equal(t, long, out.Description)
+}
+
+func TestProcessor_PrioritizesUpdate(t *testing.T) {
+	filter := NewFilter(FilterConfig{})
+	prioritizer := NewPrioritizer(PrioritizerConfig{
+		HighKeywords: []string{"critical"},
+		LowKeywords:  []string{"typo"},
+	})
+	p := NewProcessor(filter, nil, 0, prioritizer)
+
+	out, ok, err := p.Process(context.Background(), domain.RawUpdate{
+		Description: "critical security patch",
+		Author:      "alice",
+	})
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, PriorityHigh, out.Priority)
 }

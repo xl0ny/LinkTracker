@@ -12,22 +12,21 @@ type Summarizer interface {
 	Summarize(ctx context.Context, text string) (string, error)
 }
 
-const defaultPriority = "HIGH"
-
 type Processor struct {
-	filter     *Filter
-	summarizer Summarizer
-	threshold  int
+	filter      *Filter
+	summarizer  Summarizer
+	threshold   int
+	prioritizer *Prioritizer
 }
 
-func NewProcessor(filter *Filter, summarizer Summarizer, threshold int) *Processor {
-	return &Processor{filter: filter, summarizer: summarizer, threshold: threshold}
+func NewProcessor(filter *Filter, summarizer Summarizer, threshold int, prioritizer *Prioritizer) *Processor {
+	return &Processor{filter: filter, summarizer: summarizer, threshold: threshold, prioritizer: prioritizer}
 }
 
-// фильтрация и суммаризация.
-// возвращает (processed, true, nil) если событие готово к публикации,
+// Process выполняет фильтрацию и суммаризацию.
+// Возвращает (processed, true, nil) если событие готово к публикации,
 // (zero, false, nil) — если отфильтровано.
-// ошибка возвращается только при фатальном сбое; ошибка суммаризатора деградирует до original-текста.
+// Ошибка возвращается только при фатальном сбое; ошибка суммаризатора деградирует до original-текста.
 func (p *Processor) Process(ctx context.Context, raw domain.RawUpdate) (domain.ProcessedUpdate, bool, error) {
 	if reason := p.filter.Decide(raw); reason != SkipNone {
 		slog.Info("agent: update filtered",
@@ -52,12 +51,17 @@ func (p *Processor) Process(ctx context.Context, raw domain.RawUpdate) (domain.P
 		}
 	}
 
+	priority := PriorityMedium
+	if p.prioritizer != nil {
+		priority = p.prioritizer.Prioritize(description)
+	}
+
 	return domain.ProcessedUpdate{
 		EventID:     raw.EventID,
 		OccurredAt:  raw.OccurredAt,
 		URL:         raw.URL,
 		Description: description,
 		TgChatIDs:   raw.TgChatIDs,
-		Priority:    defaultPriority,
+		Priority:    priority,
 	}, true, nil
 }

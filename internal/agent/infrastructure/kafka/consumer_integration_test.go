@@ -91,7 +91,8 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 	))
 
 	filter := application.NewFilter(application.FilterConfig{MinLength: 10})
-	processor := application.NewProcessor(filter, summarizer.NewStub(40), 40)
+	prioritizer := application.NewPrioritizer(application.PrioritizerConfig{})
+	processor := application.NewProcessor(filter, summarizer.NewStub(40), 40, prioritizer)
 
 	kcfg := commoncfg.Kafka{
 		Enabled:                true,
@@ -124,12 +125,14 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = producer.Close() }()
 
-	consumer, err := NewConsumer(kcfg, ccfg, processor, producer)
-	require.NoError(t, err)
-	defer func() { _ = consumer.Close() }()
-
+	grouper := application.NewGrouper(producer, application.GrouperConfig{Window: 100 * time.Millisecond})
 	rctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
+	go grouper.Run(rctx)
+
+	consumer, err := NewConsumer(kcfg, ccfg, processor, grouper)
+	require.NoError(t, err)
+	defer func() { _ = consumer.Close() }()
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- consumer.Run(rctx) }()
@@ -166,7 +169,7 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 	require.Equal(t, "evt-valid", rec["eventId"])
 	desc, _ := rec["description"].(string)
 	require.Contains(t, desc, "this is a valid update")
-	require.Equal(t, "HIGH", rec["priority"])
+	require.Equal(t, application.PriorityMedium, rec["priority"])
 
 	dlqMsg, err := readMessage(rctx, dlqReader, 60*time.Second)
 	require.NoError(t, err)
@@ -178,6 +181,135 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 	case <-time.After(30 * time.Second):
 		t.Fatal("consumer did not stop")
 	}
+}
+
+func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
+	ctx := context.Background()
+
+	kafkaC, err := tcKafka.Run(ctx, "confluentinc/confluent-local:7.6.1",
+		tcKafka.WithClusterID("agent-filter-it"),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = tc.TerminateContainer(kafkaC)
+	})
+
+	brokers, err := kafkaC.Brokers(ctx)
+	require.NoError(t, err)
+
+	repoRoot := repoRootDir(t)
+	wd, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(repoRoot))
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	rawSchemaPath := filepath.Join(repoRoot, "schemas", "avro", "link_raw_update_event.avsc")
+	processedSchemaPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
+	rawSchema, err := os.ReadFile(rawSchemaPath)
+	require.NoError(t, err)
+	processedSchema, err := os.ReadFile(processedSchemaPath)
+	require.NoError(t, err)
+
+	srv := newSchemaRegistryStub(map[int]string{1: string(rawSchema), 2: string(processedSchema)})
+	defer srv.Close()
+
+	rawTopic := fmt.Sprintf("link.raw-filter-it-%d", time.Now().UnixNano())
+	processedTopic := fmt.Sprintf("link.processed-filter-it-%d", time.Now().UnixNano())
+	dlqTopic := fmt.Sprintf("link.raw-dlq-filter-it-%d", time.Now().UnixNano())
+
+	createTopics(ctx, t, brokers, rawTopic, processedTopic, dlqTopic)
+
+	rawEnc, err := registry.NewSingleEncoder(ctx, srv.URL, "raw-filter-it", rawSchemaPath)
+	require.NoError(t, err)
+
+	rawWriter := &kafkago.Writer{
+		Addr:                   kafkago.TCP(brokers...),
+		Topic:                  rawTopic,
+		AllowAutoTopicCreation: false,
+		BatchTimeout:           time.Millisecond,
+		WriteTimeout:           30 * time.Second,
+		ReadTimeout:            30 * time.Second,
+	}
+	defer func() { _ = rawWriter.Close() }()
+
+	filteredPayload, err := rawEnc.Encode(map[string]any{
+		"eventId":     "evt-filtered",
+		"occurredAt":  time.Now().UTC().UnixMilli(),
+		"url":         "https://example.com/spam",
+		"description": "this message contains spam keyword and should be filtered out",
+		"author":      "alice",
+		"tgChatIds":   []any{int64(777)},
+	})
+	require.NoError(t, err)
+	require.NoError(t, rawWriter.WriteMessages(ctx,
+		kafkago.Message{Key: []byte("evt-filtered"), Value: filteredPayload},
+	))
+
+	filter := application.NewFilter(application.FilterConfig{
+		StopWords: []string{"spam"},
+		MinLength: 10,
+	})
+	prioritizer := application.NewPrioritizer(application.PrioritizerConfig{})
+	processor := application.NewProcessor(filter, summarizer.NewStub(40), 40, prioritizer)
+
+	kcfg := commoncfg.Kafka{
+		Enabled:                true,
+		Brokers:                brokers,
+		RawUpdatesTopic:        rawTopic,
+		ProcessedUpdatesTopic:  processedTopic,
+		DLQTopic:               dlqTopic,
+		FailedLinksTopic:       "unused",
+		SchemaRegistryURL:      srv.URL,
+		RawUpdateSubject:       "raw-filter-sub",
+		ProcessedUpdateSubject: "processed-filter-sub",
+	}
+	pcfg := commoncfg.KafkaProducer{
+		ProducerClient: "agent-filter-it-producer",
+		WriteTimeout:   5 * time.Second,
+		RequiredACK:    int(kafkago.RequireOne),
+		MaxAttempts:    3,
+	}
+	ccfg := commoncfg.KafkaConsumer{
+		ConsumerGroup:  fmt.Sprintf("agent-filter-it-%d", time.Now().UnixNano()),
+		ConsumerClient: "agent-filter-it-consumer",
+		ReadTimeout:    3 * time.Second,
+		CommitInterval: 0,
+		StartOffset:    "earliest",
+		ProcessRetries: 1,
+		RetryDelay:     100 * time.Millisecond,
+	}
+
+	producer, err := NewProducer(ctx, kcfg, pcfg)
+	require.NoError(t, err)
+	defer func() { _ = producer.Close() }()
+
+	grouper := application.NewGrouper(producer, application.GrouperConfig{Window: 100 * time.Millisecond})
+	runCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	go grouper.Run(runCtx)
+
+	consumer, err := NewConsumer(kcfg, ccfg, processor, grouper)
+	require.NoError(t, err)
+	defer func() { _ = consumer.Close() }()
+
+	go func() {
+		_ = consumer.Run(runCtx)
+	}()
+
+	processedReader := kafkago.NewReader(kafkago.ReaderConfig{
+		Brokers:     brokers,
+		Topic:       processedTopic,
+		GroupID:     fmt.Sprintf("processed-filter-it-%d", time.Now().UnixNano()),
+		StartOffset: kafkago.FirstOffset,
+		MaxWait:     time.Second,
+	})
+	defer func() { _ = processedReader.Close() }()
+
+	readCtx, readCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer readCancel()
+	_, err = readMessage(readCtx, processedReader, 5*time.Second)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func readMessage(ctx context.Context, r *kafkago.Reader, timeout time.Duration) (kafkago.Message, error) {
