@@ -12,15 +12,17 @@ type Summarizer interface {
 	Summarize(ctx context.Context, text string) (string, error)
 }
 
+// defaultPriority — заглушка приоритизации до следующего ДЗ (ключевые слова HIGH/MEDIUM/LOW).
+const defaultPriority = "HIGH"
+
 type Processor struct {
-	filter      *Filter
-	summarizer  Summarizer
-	threshold   int
-	prioritizer *Prioritizer
+	filter     *Filter
+	summarizer Summarizer
+	threshold  int
 }
 
-func NewProcessor(filter *Filter, summarizer Summarizer, threshold int, prioritizer *Prioritizer) *Processor {
-	return &Processor{filter: filter, summarizer: summarizer, threshold: threshold, prioritizer: prioritizer}
+func NewProcessor(filter *Filter, summarizer Summarizer, threshold int) *Processor {
+	return &Processor{filter: filter, summarizer: summarizer, threshold: threshold}
 }
 
 // Process выполняет фильтрацию и суммаризацию.
@@ -51,17 +53,12 @@ func (p *Processor) Process(ctx context.Context, raw domain.RawUpdate) (domain.P
 		}
 	}
 
-	priority := PriorityMedium
-	if p.prioritizer != nil {
-		priority = p.prioritizer.Prioritize(description)
-	}
-
 	return domain.ProcessedUpdate{
 		EventID:     raw.EventID,
 		OccurredAt:  raw.OccurredAt,
 		URL:         raw.URL,
 		Description: description,
 		TgChatIDs:   raw.TgChatIDs,
-		Priority:    priority,
+		Priority:    defaultPriority,
 	}, true, nil
 }
