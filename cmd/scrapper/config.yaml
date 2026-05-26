@@ -21,16 +21,23 @@ scheduler:
 
 kafka:
   enabled: true                              # true => scrapper отправляет уведомления через Kafka, иначе через HTTP-клиент бота
-  brokers:                                   # bootstrap.servers; перечисляем все 3 для отказоустойчивости, клиент сам выберет рабочий
-    - "localhost:19092"
-    - "localhost:29092"
-    - "localhost:39092"
-  links_topic: "link-updates"                # топик основного потока уведомлений; имя совпадает с тем, что слушает бот
-  failed_links_topic: "failed-links"         # топик для уведомлений о неуспешных проверках ссылок
-  dlq_topic: "link-updates-dlq"              # имя DLQ топика; на стороне scrapper не используется напрямую, нужен только боту
   schema_registry_url: "http://localhost:18081"
   update_subject: "link-update-event-value"
   failed_subject: "failed-links-event-value"
+
+  link_updates:
+    brokers:                                 # bootstrap.servers; перечисляем все 3 для отказоустойчивости
+      - "localhost:19092"
+      - "localhost:29092"
+      - "localhost:39092"
+    topic: "link-updates"                    # топик основного потока; имя совпадает с тем, что слушает бот
+
+  failed_links:
+    brokers:
+      - "localhost:19092"
+      - "localhost:29092"
+      - "localhost:39092"
+    topic: "failed-links"                    # топик для уведомлений о неуспешных проверках ссылок
 
   producer:
     mode: "outbox"                           # direct => писать прямо в Kafka из notifier; outbox => писать в outbox-таблицу + публишер

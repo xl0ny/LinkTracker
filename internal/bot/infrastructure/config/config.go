@@ -13,6 +13,20 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/logging"
 )
 
+type KafkaSettings struct {
+	Cluster  config.Kafka         `yaml:",inline"`
+	Consumer config.KafkaConsumer `yaml:"consumer"`
+}
+
+type RedisSettings struct {
+	Enabled   bool          `yaml:"enabled"`
+	Addr      string        `yaml:"addr"`
+	Password  string        `envconfig:"REDIS_PASSWORD"`
+	DB        int           `yaml:"db"`
+	KeyPrefix string        `yaml:"key_prefix"`
+	TTL       time.Duration `yaml:"ttl"`
+}
+
 type Config struct {
 	TelegramToken string `envconfig:"APP_TELEGRAM_TOKEN" required:"true"`
 
@@ -23,21 +37,8 @@ type Config struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 
-	Kafka struct {
-		config.Kafka `yaml:",inline"`
-		Consumer     struct {
-			config.KafkaConsumer `yaml:",inline"`
-		} `yaml:"consumer"`
-	} `yaml:"kafka"`
-
-	Redis struct {
-		Enabled   bool          `yaml:"enabled"`
-		Addr      string        `yaml:"addr"`
-		Password  string        `envconfig:"REDIS_PASSWORD"`
-		DB        int           `yaml:"db"`
-		KeyPrefix string        `yaml:"key_prefix"`
-		TTL       time.Duration `yaml:"ttl"`
-	} `yaml:"redis"`
+	Kafka KafkaSettings `yaml:"kafka"`
+	Redis RedisSettings `yaml:"redis"`
 }
 
 func (c *Config) GetLevel() slog.Level {

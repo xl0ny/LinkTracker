@@ -42,8 +42,8 @@ func NewNotifier(ctx context.Context, repo NotifierRepository, k commoncfg.Kafka
 	return &Notifier{
 		repo:        repo,
 		enc:         enc,
-		updateTopic: k.UpadateLinksTopic,
-		failedTopic: k.FailedLinksTopic,
+		updateTopic: k.LinkUpdates.Topic,
+		failedTopic: k.FailedLinks.Topic,
 	}, nil
 }
 

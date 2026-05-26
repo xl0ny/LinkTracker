@@ -41,20 +41,20 @@ func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.Kafka
 	}
 
 	dialer := &kafkago.Dialer{ClientID: pconfig.ProducerClient}
-	base := kafkago.WriterConfig{
-		Brokers:      kconfig.Brokers,
-		WriteTimeout: pconfig.WriteTimeout,
-		RequiredAcks: pconfig.RequiredACK,
-		MaxAttempts:  pconfig.MaxAttempts,
-		Dialer:       dialer,
+	writerBase := func(topic config.KafkaTopic) kafkago.WriterConfig {
+		return kafkago.WriterConfig{
+			Brokers:      topic.Brokers,
+			Topic:        topic.Topic,
+			WriteTimeout: pconfig.WriteTimeout,
+			RequiredAcks: pconfig.RequiredACK,
+			MaxAttempts:  pconfig.MaxAttempts,
+			Dialer:       dialer,
+		}
 	}
 
-	updateCfg, failedCfg := base, base
-	updateCfg.Topic, failedCfg.Topic = kconfig.UpadateLinksTopic, kconfig.FailedLinksTopic
-
 	return &Notifier{
-		updateWriter: kafkago.NewWriter(updateCfg),
-		failedWriter: kafkago.NewWriter(failedCfg),
+		updateWriter: kafkago.NewWriter(writerBase(kconfig.LinkUpdates)),
+		failedWriter: kafkago.NewWriter(writerBase(kconfig.FailedLinks)),
 		enc:          enc,
 	}, nil
 }

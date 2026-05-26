@@ -6,16 +6,30 @@ logging:
 
 kafka:
   enabled: true                              # true => бот читает уведомления из Kafka, иначе из HTTP /updates
-  brokers:                                   # три bootstrap-адреса локального KRaft-кластера (см. compose.yaml)
-    - "localhost:19092"
-    - "localhost:29092"
-    - "localhost:39092"
-  links_topic: "link-updates"                # должен совпадать с топиком, в который пишет scrapper
-  failed_links_topic: "failed-links"         # отдельный топик для нотификаций о неудачных проверках ссылок
-  dlq_topic: "link-updates-dlq"              # сюда бот складывает poison pills и сообщения после исчерпания ретраев
   schema_registry_url: "http://localhost:18081" # Confluent Schema Registry из compose (порт не 8081 — там HTTP бота)
   update_subject: "link-update-event-value"  # subject в SR для LinkUpdateEvent
   failed_subject: "failed-links-event-value" # subject в SR для LinkUpdateFailedEvent
+
+  link_updates:
+    brokers:                                 # bootstrap-адреса кластера для основного потока (см. compose.yaml)
+      - "localhost:19092"
+      - "localhost:29092"
+      - "localhost:39092"
+    topic: "link-updates"                    # должен совпадать с топиком, в который пишет scrapper
+
+  failed_links:
+    brokers:
+      - "localhost:19092"
+      - "localhost:29092"
+      - "localhost:39092"
+    topic: "failed-links"                    # отдельный топик для нотификаций о неудачных проверках ссылок
+
+  dlq:
+    brokers:
+      - "localhost:19092"
+      - "localhost:29092"
+      - "localhost:39092"
+    topic: "link-updates-dlq"                # сюда бот складывает poison pills и сообщения после исчерпания ретраев
 
   consumer:
     consumer_group: "bot-link-updates"       # group.id; общий для всех инстансов бота, чтобы Kafka делила между ними партиции

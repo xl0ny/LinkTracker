@@ -41,13 +41,15 @@ type Config struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 
-	Kafka struct {
-		config.Kafka `yaml:",inline"`
-		Producer     struct {
-			config.KafkaProducer `yaml:",inline"`
-			Outbox               config.KafkaOutbox `yaml:"outbox"`
-		} `yaml:"producer"`
-	} `yaml:"kafka"`
+	Kafka KafkaSettings `yaml:"kafka"`
+}
+
+type KafkaSettings struct {
+	Cluster  config.Kafka `yaml:",inline"`
+	Producer struct {
+		config.KafkaProducer `yaml:",inline"`
+		Outbox               config.KafkaOutbox `yaml:"outbox"`
+	} `yaml:"producer"`
 }
 
 func (c *Config) GetLevel() slog.Level {

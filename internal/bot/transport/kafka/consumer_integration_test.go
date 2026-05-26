@@ -162,11 +162,19 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 	}
 
 	kcfg := commoncfg.Kafka{
-		Enabled:           true,
-		Brokers:           brokers,
-		UpadateLinksTopic: topicUpdates,
-		FailedLinksTopic:  topicFailed,
-		DLQTopic:          topicDLQ,
+		Enabled: true,
+		LinkUpdates: commoncfg.KafkaTopic{
+			Brokers: brokers,
+			Topic:   topicUpdates,
+		},
+		FailedLinks: commoncfg.KafkaTopic{
+			Brokers: brokers,
+			Topic:   topicFailed,
+		},
+		DLQ: commoncfg.KafkaTopic{
+			Brokers: brokers,
+			Topic:   topicDLQ,
+		},
 		SchemaRegistryURL: srv.URL,
 		UpdateSubject:     "u",
 		FailedSubject:     "f",

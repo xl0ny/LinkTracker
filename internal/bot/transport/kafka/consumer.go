@@ -49,24 +49,26 @@ func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, sender Mess
 
 	dialer := &kafkago.Dialer{ClientID: cconfig.ConsumerClient}
 
-	base := kafkago.ReaderConfig{
-		Brokers:        kconfig.Brokers,
-		MaxWait:        cconfig.ReadTimeout,
-		Topic:          kconfig.UpadateLinksTopic,
-		GroupID:        cconfig.ConsumerGroup,
-		StartOffset:    startOffset,
-		CommitInterval: cconfig.CommitInterval,
-		Dialer:         dialer,
+	readerBase := func(topic config.KafkaTopic) kafkago.ReaderConfig {
+		return kafkago.ReaderConfig{
+			Brokers:        topic.Brokers,
+			MaxWait:        cconfig.ReadTimeout,
+			Topic:          topic.Topic,
+			GroupID:        cconfig.ConsumerGroup,
+			StartOffset:    startOffset,
+			CommitInterval: cconfig.CommitInterval,
+			Dialer:         dialer,
+		}
 	}
 
-	updateCfg, failedCfg := base, base
-	updateCfg.Topic, failedCfg.Topic = kconfig.UpadateLinksTopic, kconfig.FailedLinksTopic
+	updateCfg := readerBase(kconfig.LinkUpdates)
+	failedCfg := readerBase(kconfig.FailedLinks)
 
 	var dlqWriter *kafkago.Writer
-	if kconfig.DLQTopic != "" {
+	if kconfig.DLQ.Topic != "" {
 		dlqWriter = kafkago.NewWriter(kafkago.WriterConfig{
-			Brokers:      kconfig.Brokers,
-			Topic:        kconfig.DLQTopic,
+			Brokers:      kconfig.DLQ.Brokers,
+			Topic:        kconfig.DLQ.Topic,
 			RequiredAcks: int(kafkago.RequireAll),
 			Dialer:       dialer,
 		})

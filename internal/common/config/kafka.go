@@ -2,14 +2,17 @@ package config
 
 import "time"
 
+type KafkaTopic struct {
+	Brokers []string `yaml:"brokers" validate:"required,min=1,dive,hostname_port"`
+	Topic   string   `yaml:"topic" validate:"required"`
+}
+
 type Kafka struct {
 	Enabled bool `yaml:"enabled" validate:"required"`
 
-	Brokers []string `yaml:"brokers" validate:"required,min=1,dive,hostname_port"`
-
-	UpadateLinksTopic string `yaml:"links_topic" validate:"required"`
-	FailedLinksTopic  string `yaml:"failed_links_topic" validate:"required"`
-	DLQTopic          string `yaml:"dlq_topic" validate:"required"`
+	LinkUpdates KafkaTopic `yaml:"link_updates" validate:"required"`
+	FailedLinks KafkaTopic `yaml:"failed_links" validate:"required"`
+	DLQ         KafkaTopic `yaml:"dlq"`
 
 	SchemaRegistryURL string `yaml:"schema_registry_url"`
 	UpdateSubject     string `yaml:"update_subject"` // link-updates-value

@@ -41,7 +41,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("app run: Link tracker creation error - %w", err)
 	}
 
-	kafkaCleanup, kafkaErr := attachKafkaConsumer(ctx, cfg, bot)
+	kafkaCleanup, kafkaErr := attachKafkaConsumer(ctx, cfg.Kafka, cfg.Redis, bot)
 	if kafkaErr != nil {
 		return kafkaErr
 	}
@@ -90,20 +90,20 @@ func Run(ctx context.Context, cfg *config.Config) error {
 }
 
 // attachKafkaConsumer starts the Kafka consumer when enabled; Redis is wired for idempotency when configured.
-func attachKafkaConsumer(ctx context.Context, cfg *config.Config, sender kafka.MessageSender) (cleanup func(), err error) {
+func attachKafkaConsumer(ctx context.Context, kafkaCfg config.KafkaSettings, redisCfg config.RedisSettings, sender kafka.MessageSender) (cleanup func(), err error) {
 	cleanup = func() {}
-	if !cfg.Kafka.Kafka.Enabled {
+	if !kafkaCfg.Cluster.Enabled {
 		return cleanup, nil
 	}
 
 	var idem kafka.IdempotencyStore
-	if cfg.Redis.Enabled {
+	if redisCfg.Enabled {
 		redisStore := botredis.New(botredis.Config{
-			Addr:      cfg.Redis.Addr,
-			Password:  cfg.Redis.Password,
-			DB:        cfg.Redis.DB,
-			KeyPrefix: cfg.Redis.KeyPrefix,
-			TTL:       cfg.Redis.TTL,
+			Addr:      redisCfg.Addr,
+			Password:  redisCfg.Password,
+			DB:        redisCfg.DB,
+			KeyPrefix: redisCfg.KeyPrefix,
+			TTL:       redisCfg.TTL,
 		})
 		if perr := redisStore.Ping(ctx); perr != nil {
 			return nil, fmt.Errorf("bot run: redis ping: %w", perr)
@@ -118,7 +118,7 @@ func attachKafkaConsumer(ctx context.Context, cfg *config.Config, sender kafka.M
 		idem = redisStore
 	}
 
-	kafkaConsumer, kerr := kafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, sender, idem)
+	kafkaConsumer, kerr := kafka.NewConsumer(kafkaCfg.Cluster, kafkaCfg.Consumer, sender, idem)
 	if kerr != nil {
 		cleanup()
 		return nil, fmt.Errorf("bot run: kafka consumer: %w", kerr)
