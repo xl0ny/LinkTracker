@@ -18,7 +18,7 @@ x-kafka-env: &kafka-env
   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
   KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
   KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-  KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093"
+  KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-broker-1:9093,2@kafka-broker-2:9093,3@kafka-broker-3:9093"
   CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
   KAFKA_DEFAULT_REPLICATION_FACTOR: "3"
   KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
@@ -61,42 +61,42 @@ services:
       - "postgres://postgres:${POSTGRES_PASSWORD}@db:5432/linktracker?sslmode=disable"
       - "up"
 
-  kafka-1:
+  kafka-broker-1:
     <<: *kafka-common
-    container_name: kafka-1
-    hostname: kafka-1
+    container_name: kafka-broker-1
+    hostname: kafka-broker-1
     ports:
       - "19092:9092"
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "1"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:19092,INTERNAL://kafka-1:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:19092,INTERNAL://kafka-broker-1:9094"
     volumes:
       - kafka1-data:/var/lib/kafka/data
 
-  kafka-2:
+  kafka-broker-2:
     <<: *kafka-common
-    container_name: kafka-2
-    hostname: kafka-2
+    container_name: kafka-broker-2
+    hostname: kafka-broker-2
     ports:
       - "29092:9092"
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "2"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:29092,INTERNAL://kafka-2:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:29092,INTERNAL://kafka-broker-2:9094"
     volumes:
       - kafka2-data:/var/lib/kafka/data
 
-  kafka-3:
+  kafka-broker-3:
     <<: *kafka-common
-    container_name: kafka-3
-    hostname: kafka-3
+    container_name: kafka-broker-3
+    hostname: kafka-broker-3
     ports:
       - "39092:9092"
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "3"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:39092,INTERNAL://kafka-3:9094"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:39092,INTERNAL://kafka-broker-3:9094"
     volumes:
       - kafka3-data:/var/lib/kafka/data
 
@@ -104,17 +104,17 @@ services:
     image: confluentinc/cp-kafka:7.6.1
     container_name: kafka-init
     depends_on:
-      kafka-1:
+      kafka-broker-1:
         condition: service_healthy
-      kafka-2:
+      kafka-broker-2:
         condition: service_healthy
-      kafka-3:
+      kafka-broker-3:
         condition: service_healthy
     entrypoint: [ "bash", "-c" ]
     command:
       - |
         set -euo pipefail
-        BOOTSTRAP="kafka-1:9094,kafka-2:9094,kafka-3:9094"
+        BOOTSTRAP="kafka-broker-1:9094,kafka-broker-2:9094,kafka-broker-3:9094"
 
         create_topic () {
           local name=$$1
@@ -147,17 +147,17 @@ services:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     depends_on:
-      kafka-1:
+      kafka-broker-1:
         condition: service_healthy
-      kafka-2:
+      kafka-broker-2:
         condition: service_healthy
-      kafka-3:
+      kafka-broker-3:
         condition: service_healthy
     ports:
       - "8085:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: "linktracker-local"
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-1:9094,kafka-2:9094,kafka-3:9094"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-broker-1:9094,kafka-broker-2:9094,kafka-broker-3:9094"
       KAFKA_CLUSTERS_0_SCHEMA_REGISTRY: http://schema-registry:8081
       DYNAMIC_CONFIG_ENABLED: "true"
 
@@ -165,18 +165,18 @@ services:
     image: confluentinc/cp-schema-registry:7.6.1
     container_name: schema-registry
     depends_on:
-      kafka-1:
+      kafka-broker-1:
         condition: service_healthy
-      kafka-2:
+      kafka-broker-2:
         condition: service_healthy
-      kafka-3:
+      kafka-broker-3:
         condition: service_healthy
     ports:
       - "18081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-1:9094,PLAINTEXT://kafka-2:9094,PLAINTEXT://kafka-3:9094
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-broker-1:9094,PLAINTEXT://kafka-broker-2:9094,PLAINTEXT://kafka-broker-3:9094
       SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: "3"
 
   redis:

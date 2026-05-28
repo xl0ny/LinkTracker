@@ -26,15 +26,15 @@ type SchedulerLinks interface {
 	UpdateLinkUpdatedAt(ctx context.Context, chatID int64, linkURL string, t time.Time) error
 }
 
-type TxRunner interface {
-	WithTx(ctx context.Context, fn func(ctx context.Context) error) error
+type Transactor interface {
+	Do(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
 type Scheduler struct {
 	repo        SchedulerLinks
 	linkChecker linkChecker
 	botNotifier BotNotifier
-	txRunner    TxRunner
+	transactor  Transactor
 	batchSize   int
 	workers     int
 	interval    time.Duration
@@ -73,8 +73,8 @@ func NewScheduler(
 	}
 }
 
-func (s *Scheduler) SetTxRunner(t TxRunner) {
-	s.txRunner = t
+func (s *Scheduler) SetTransactor(t Transactor) {
+	s.transactor = t
 }
 
 func (s *Scheduler) Run(ctx context.Context) {
@@ -106,6 +106,16 @@ func (s *Scheduler) Run(ctx context.Context) {
 	s.workersWG.Wait()
 }
 
+func (s *Scheduler) exec(ctx context.Context, fn func(ctx context.Context) error) error {
+	if s.transactor == nil {
+		return fn(ctx)
+	}
+	if err := s.transactor.Do(ctx, fn); err != nil {
+		return fmt.Errorf("scheduler: transactor: %w", err)
+	}
+	return nil
+}
+
 type linkProcessError struct {
 	ChatID int64
 	Link   string
@@ -118,7 +128,7 @@ func (s *Scheduler) processLink(ctx context.Context, sub domain.SubscribedLink) 
 		return fmt.Errorf("check link: %w", err)
 	}
 	if len(out.Updates) > 0 {
-		return s.notifyUpdatesAndCommit(ctx, sub, out.Updates, out.Latest)
+		return s.withCommitUpdates(ctx, sub, out.Updates, out.Latest)
 	}
 	if sub.Link.LastUpdated.IsZero() && !out.Latest.IsZero() {
 		if upErr := s.repo.UpdateLinkUpdatedAt(ctx, sub.ChatID, sub.Link.URL, out.Latest); upErr != nil {
@@ -129,10 +139,10 @@ func (s *Scheduler) processLink(ctx context.Context, sub domain.SubscribedLink) 
 	if !out.Changed {
 		return nil
 	}
-	return s.notifyAndCommit(ctx, sub, out.Description, out.Latest)
+	return s.withCommit(ctx, sub, out.Description, out.Latest)
 }
 
-func (s *Scheduler) notifyUpdatesAndCommit(ctx context.Context, sub domain.SubscribedLink, updates []domain.LinkCheckUpdate, latest time.Time) error {
+func (s *Scheduler) withCommitUpdates(ctx context.Context, sub domain.SubscribedLink, updates []domain.LinkCheckUpdate, latest time.Time) error {
 	work := func(ctx context.Context) error {
 		for _, u := range updates {
 			if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, u.Description); nfErr != nil {
@@ -144,17 +154,11 @@ func (s *Scheduler) notifyUpdatesAndCommit(ctx context.Context, sub domain.Subsc
 		}
 		return nil
 	}
-	if s.txRunner == nil {
-		return work(ctx)
-	}
-	if err := s.txRunner.WithTx(ctx, work); err != nil {
-		return fmt.Errorf("scheduler: with tx: %w", err)
-	}
-	return nil
+	return s.exec(ctx, work)
 }
 
-func (s *Scheduler) notifyAndCommit(ctx context.Context, sub domain.SubscribedLink, description string, latest time.Time) error {
-	work := func(ctx context.Context) error {
+func (s *Scheduler) withCommit(ctx context.Context, sub domain.SubscribedLink, description string, latest time.Time) error {
+	return s.exec(ctx, func(ctx context.Context) error {
 		if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, description); nfErr != nil {
 			return fmt.Errorf("notify update: %w", nfErr)
 		}
@@ -162,14 +166,7 @@ func (s *Scheduler) notifyAndCommit(ctx context.Context, sub domain.SubscribedLi
 			return fmt.Errorf("update link date: %w", upErr)
 		}
 		return nil
-	}
-	if s.txRunner == nil {
-		return work(ctx)
-	}
-	if err := s.txRunner.WithTx(ctx, work); err != nil {
-		return fmt.Errorf("scheduler: with tx: %w", err)
-	}
-	return nil
+	})
 }
 
 func (s *Scheduler) reportFailedLinks(ctx context.Context, failedByChat map[int64][]string) {

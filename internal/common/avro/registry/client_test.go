@@ -26,7 +26,7 @@ func TestClient_RegisterAndCodecForID(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]int{"id": registeredID})
 		case r.Method == http.MethodGet && r.URL.Path == "/schemas/ids/1":
 			w.Header().Set("Content-Type", "application/vnd.schemaregistry.v1+json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"schema": schema})
+			_ = json.NewEncoder(w).Encode(map[string]string{schemaRegistrySchemaField: schema})
 		default:
 			http.NotFound(w, r)
 		}
@@ -75,7 +75,7 @@ func TestNewEncoder_integrationWithMockSR(t *testing.T) {
 			var id int
 			if _, scanErr := fmt.Sscanf(r.URL.Path, "/schemas/ids/%d", &id); scanErr == nil && schemas[id] != "" {
 				w.Header().Set("Content-Type", "application/vnd.schemaregistry.v1+json")
-				_ = json.NewEncoder(w).Encode(map[string]string{"schema": schemas[id]})
+				_ = json.NewEncoder(w).Encode(map[string]string{schemaRegistrySchemaField: schemas[id]})
 				return
 			}
 			http.NotFound(w, r)

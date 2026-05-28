@@ -46,7 +46,9 @@ func (c *Config) GetLevel() slog.Level {
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil {
+		slog.Warn("bot config: failed to load .env", slog.String("error", err.Error()))
+	}
 
 	data, err := os.ReadFile("cmd/bot/config.yaml")
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
+	commoncfg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 	scrapperapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
@@ -92,8 +93,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		cfg.Scheduler.Interval,
 	)
 	if publisher != nil {
-		if tr, ok := repo.(application.TxRunner); ok {
-			sch.SetTxRunner(tr)
+		if tr, ok := repo.(application.Transactor); ok {
+			sch.SetTransactor(tr)
 		}
 		go publisher.Run(ctx)
 		defer func() {
@@ -129,16 +130,16 @@ func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.Clien
 
 	mode := strings.ToLower(strings.TrimSpace(cfg.Kafka.Producer.Mode))
 	if mode == "" {
-		mode = "direct"
+		mode = commoncfg.KafkaProducerModeDirect
 	}
 	switch mode {
-	case "direct":
+	case commoncfg.KafkaProducerModeDirect:
 		n, err := kafka.NewNotifier(ctx, cfg.Kafka.Cluster, cfg.Kafka.Producer.KafkaProducer)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scrapper: kafka notifier: %w", err)
 		}
 		return n, nil, nil
-	case "outbox":
+	case commoncfg.KafkaProducerModeOutbox:
 		writeRepo, okWrite := repo.(outbox.NotifierRepository)
 		pollRepo, okPoll := repo.(outbox.PublisherRepository)
 		if !okWrite || !okPoll {
@@ -151,7 +152,12 @@ func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.Clien
 		publisher := outbox.NewPublisher(pollRepo, cfg.Kafka.Cluster, cfg.Kafka.Producer.KafkaProducer, cfg.Kafka.Producer.Outbox)
 		return notifier, publisher, nil
 	default:
-		return nil, nil, fmt.Errorf("scrapper: unknown kafka producer mode %q (expected direct|outbox)", cfg.Kafka.Producer.Mode)
+		return nil, nil, fmt.Errorf(
+			"scrapper: unknown kafka producer mode %q (expected %s|%s)",
+			cfg.Kafka.Producer.Mode,
+			commoncfg.KafkaProducerModeDirect,
+			commoncfg.KafkaProducerModeOutbox,
+		)
 	}
 }
 

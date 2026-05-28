@@ -65,7 +65,7 @@ func (r *Repository) AddLink(ctx context.Context, chatID int64, link string, tag
 	if err != nil {
 		return fmt.Errorf("repo: AddLink - begin (%w)", err)
 	}
-	defer rollbackUnlessCommitted(ctx, tx)
+	defer rollbackTx(ctx, tx)
 
 	var internalChatID int64
 	err = tx.QueryRow(ctx, `SELECT id FROM chats WHERE telegram_id = $1`, chatID).Scan(&internalChatID)
@@ -310,7 +310,7 @@ func (r *Repository) DeleteLink(ctx context.Context, chatID int64, linkURL strin
 	if err != nil {
 		return domain.Link{}, fmt.Errorf("repo: DeleteLink - begin (%w)", err)
 	}
-	defer rollbackUnlessCommitted(ctx, tx)
+	defer rollbackTx(ctx, tx)
 
 	const sel = `
 SELECT s.id, l.url, s.last_updated_at,

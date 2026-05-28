@@ -2,6 +2,11 @@ package config
 
 import "time"
 
+const (
+	KafkaProducerModeDirect = "direct"
+	KafkaProducerModeOutbox = "outbox"
+)
+
 type KafkaTopic struct {
 	Brokers []string `yaml:"brokers" validate:"required,min=1,dive,hostname_port"`
 	Topic   string   `yaml:"topic" validate:"required"`
@@ -29,6 +34,8 @@ type KafkaConsumer struct {
 
 	ProcessRetries int           `yaml:"process_retries" validate:"required,gte=1,lte=20"`
 	RetryDelay     time.Duration `yaml:"retry_delay" validate:"required,gt=0"`
+
+	TopicWorkers int `yaml:"topic_workers" validate:"gte=0,lte=32"`
 }
 
 type KafkaProducer struct {

@@ -32,6 +32,8 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
+const schemaRegistrySchemaField = "schema"
+
 type registerResponse struct {
 	ID int `json:"id"`
 }
@@ -42,7 +44,7 @@ type schemaByIDResponse struct {
 
 func (c *Client) RegisterSchema(ctx context.Context, subject, schemaJSON string) (int32, error) {
 	url := fmt.Sprintf("%s/subjects/%s/versions", c.baseURL, subject)
-	body, err := json.Marshal(map[string]string{"schema": schemaJSON})
+	body, err := json.Marshal(map[string]string{schemaRegistrySchemaField: schemaJSON})
 	if err != nil {
 		return 0, fmt.Errorf("schema registry: marshal register body: %w", err)
 	}

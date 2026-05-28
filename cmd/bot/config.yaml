@@ -39,6 +39,7 @@ kafka:
     start_offset: "earliest"                 # при первом подключении группы читаем всё с начала; в проде обычно latest
     process_retries: 3                       # ретраи только для бизнес-ошибок (SendMessage); decode/validation идут в DLQ сразу
     retry_delay: "500ms"                     # пауза между попытками SendMessage; защищает Telegram от мгновенных повторов
+    topic_workers: 2                         # consumer-инстансов на каждый топик (link-updates, failed-links); партиции делятся внутри group.id
 
 redis:
   enabled: true                              # выключить, если запускаешь бота локально без Redis — идемпотентность отключится

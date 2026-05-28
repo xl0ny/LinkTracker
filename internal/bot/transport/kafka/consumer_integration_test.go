@@ -20,7 +20,7 @@ import (
 	tcKafka "github.com/testcontainers/testcontainers-go/modules/kafka"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/avro/registry"
-	commoncfg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/config"
 )
 
 func TestKafkaIntegration_produceConsume(t *testing.T) {
@@ -151,7 +151,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 	sent := make(chan string, 16)
 	sender := &captureSender{ch: sent}
 
-	ccfg := commoncfg.KafkaConsumer{
+	ccfg := config.KafkaConsumer{
 		ConsumerGroup:  fmt.Sprintf("bot-it-%d", time.Now().UnixNano()),
 		ConsumerClient: "bot-consumer-it",
 		ReadTimeout:    3 * time.Second,
@@ -161,17 +161,17 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 		RetryDelay:     100 * time.Millisecond,
 	}
 
-	kcfg := commoncfg.Kafka{
+	kcfg := config.Kafka{
 		Enabled: true,
-		LinkUpdates: commoncfg.KafkaTopic{
+		LinkUpdates: config.KafkaTopic{
 			Brokers: brokers,
 			Topic:   topicUpdates,
 		},
-		FailedLinks: commoncfg.KafkaTopic{
+		FailedLinks: config.KafkaTopic{
 			Brokers: brokers,
 			Topic:   topicFailed,
 		},
-		DLQ: commoncfg.KafkaTopic{
+		DLQ: config.KafkaTopic{
 			Brokers: brokers,
 			Topic:   topicDLQ,
 		},

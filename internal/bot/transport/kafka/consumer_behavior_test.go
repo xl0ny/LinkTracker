@@ -21,7 +21,7 @@ import (
 func TestRetryBusiness_stopsAfterMaxRetries(t *testing.T) {
 	c := &Consumer{maxRetries: 3, retryDelay: time.Millisecond}
 	var calls int
-	err := c.retryBusiness(context.Background(), func(context.Context) error {
+	err := c.withRetries(context.Background(), func(context.Context) error {
 		calls++
 		return errors.New("fail")
 	})
@@ -36,7 +36,7 @@ func TestDecodeUpdate_rejectsGarbageWire(t *testing.T) {
 }
 
 func TestDecodeUpdate_rejectsBadKeyNoRetrySemantics(t *testing.T) {
-	// decode errors are categorized outside retryBusiness — this only checks decode returns quickly.
+	// decode errors are categorized outside withRetries — this only checks decode returns quickly.
 	c := &Consumer{sr: commonreg.NewClient("http://unused.example")}
 	_, _, err := c.decodeUpdate(context.Background(), kafka.Message{Key: []byte("not-int"), Value: commonreg.EncodeConfluent(1, []byte{1, 2})})
 	require.Error(t, err)

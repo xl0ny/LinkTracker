@@ -24,9 +24,9 @@ type IdempotencyStore interface {
 }
 
 type Consumer struct {
-	updateReader *kafkago.Reader
-	failedReader *kafkago.Reader
-	dlqWriter    *kafkago.Writer
+	updateReaders []*kafkago.Reader
+	failedReaders []*kafkago.Reader
+	dlqWriter     *kafkago.Writer
 
 	sr *registry.Client
 
@@ -35,8 +35,6 @@ type Consumer struct {
 	maxRetries int
 	retryDelay time.Duration
 }
-
-const topicReaderGoroutines = 2
 
 func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, sender MessageSender, idem IdempotencyStore) (*Consumer, error) {
 	if kconfig.SchemaRegistryURL == "" {
@@ -61,8 +59,13 @@ func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, sender Mess
 		}
 	}
 
-	updateCfg := readerBase(kconfig.LinkUpdates)
-	failedCfg := readerBase(kconfig.FailedLinks)
+	workers := cconfig.TopicWorkers
+	updateReaders := make([]*kafkago.Reader, workers)
+	failedReaders := make([]*kafkago.Reader, workers)
+	for i := range workers {
+		updateReaders[i] = kafkago.NewReader(readerBase(kconfig.LinkUpdates))
+		failedReaders[i] = kafkago.NewReader(readerBase(kconfig.FailedLinks))
+	}
 
 	var dlqWriter *kafkago.Writer
 	if kconfig.DLQ.Topic != "" {
@@ -75,27 +78,33 @@ func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, sender Mess
 	}
 
 	return &Consumer{
-		updateReader: kafkago.NewReader(updateCfg),
-		failedReader: kafkago.NewReader(failedCfg),
-		dlqWriter:    dlqWriter,
-		sr:           registry.NewClient(kconfig.SchemaRegistryURL),
-		sender:       sender,
-		idempotent:   idem,
-		maxRetries:   cconfig.ProcessRetries,
-		retryDelay:   cconfig.RetryDelay,
+		updateReaders: updateReaders,
+		failedReaders: failedReaders,
+		dlqWriter:     dlqWriter,
+		sr:            registry.NewClient(kconfig.SchemaRegistryURL),
+		sender:        sender,
+		idempotent:    idem,
+		maxRetries:    cconfig.ProcessRetries,
+		retryDelay:    cconfig.RetryDelay,
 	}, nil
 }
 
 func (c *Consumer) Close() error {
 	var errs []error
-	if c.updateReader != nil {
-		if err := c.updateReader.Close(); err != nil {
-			errs = append(errs, wrapConsumerError("close update reader", err))
+	for i, r := range c.updateReaders {
+		if r == nil {
+			continue
+		}
+		if err := r.Close(); err != nil {
+			errs = append(errs, wrapConsumerError(fmt.Sprintf("close update reader %d", i), err))
 		}
 	}
-	if c.failedReader != nil {
-		if err := c.failedReader.Close(); err != nil {
-			errs = append(errs, wrapConsumerError("close failed reader", err))
+	for i, r := range c.failedReaders {
+		if r == nil {
+			continue
+		}
+		if err := r.Close(); err != nil {
+			errs = append(errs, wrapConsumerError(fmt.Sprintf("close failed reader %d", i), err))
 		}
 	}
 	if c.dlqWriter != nil {
@@ -107,18 +116,23 @@ func (c *Consumer) Close() error {
 }
 
 func (c *Consumer) Run(ctx context.Context) error {
+	n := len(c.updateReaders) + len(c.failedReaders)
 	var wg sync.WaitGroup
-	errCh := make(chan error, topicReaderGoroutines)
+	errCh := make(chan error, n)
 
-	wg.Add(topicReaderGoroutines)
-	go func() {
-		defer wg.Done()
-		errCh <- c.consumeTopic(ctx, c.updateReader, c.decodeUpdate, c.deliverUpdate)
-	}()
-	go func() {
-		defer wg.Done()
-		errCh <- c.consumeTopic(ctx, c.failedReader, c.decodeFailed, c.deliverFailed)
-	}()
+	wg.Add(n)
+	for _, reader := range c.updateReaders {
+		go func(r *kafkago.Reader) {
+			defer wg.Done()
+			errCh <- c.consumeTopic(ctx, r, c.decodeUpdate, c.deliverUpdate)
+		}(reader)
+	}
+	for _, reader := range c.failedReaders {
+		go func(r *kafkago.Reader) {
+			defer wg.Done()
+			errCh <- c.consumeTopic(ctx, r, c.decodeFailed, c.deliverFailed)
+		}(reader)
+	}
 
 	wg.Wait()
 	close(errCh)
@@ -150,7 +164,7 @@ func (c *Consumer) consumeTopic(ctx context.Context, reader *kafkago.Reader, dec
 		if decErr != nil {
 			processErr = decErr
 		} else {
-			processErr = c.retryBusiness(ctx, func(ctx context.Context) error {
+			processErr = c.withRetries(ctx, func(ctx context.Context) error {
 				return deliver(ctx, chatID, record)
 			})
 		}
@@ -166,7 +180,7 @@ func (c *Consumer) consumeTopic(ctx context.Context, reader *kafkago.Reader, dec
 	}
 }
 
-func (c *Consumer) retryBusiness(ctx context.Context, fn func(context.Context) error) error {
+func (c *Consumer) withRetries(ctx context.Context, fn func(context.Context) error) error {
 	var lastErr error
 	for attempt := 1; attempt <= c.maxRetries; attempt++ {
 		if err := fn(ctx); err != nil {

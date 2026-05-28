@@ -41,11 +41,18 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("app run: Link tracker creation error - %w", err)
 	}
 
-	kafkaCleanup, kafkaErr := attachKafkaConsumer(ctx, cfg.Kafka, cfg.Redis, bot)
-	if kafkaErr != nil {
-		return kafkaErr
+	kafkaConsumer, closeKafka, err := newKafkaConsumer(ctx, cfg.Kafka, cfg.Redis, bot)
+	if err != nil {
+		return err
 	}
-	defer kafkaCleanup()
+	defer closeKafka()
+	if kafkaConsumer != nil {
+		go func() {
+			if rerr := kafkaConsumer.Run(ctx); rerr != nil {
+				slog.Error("kafka consumer running error", slog.String("error", rerr.Error()), slog.String("event", "kafka"))
+			}
+		}()
+	}
 
 	stateStore := application.NewTrackStateStore()
 	trackCmd := command.NewTrack(tracker, stateStore)
@@ -59,54 +66,51 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		go application.Worker(actions, dispatcher, bot)
 	}
 
-	r := newBotHTTPRouter(bot)
-
-	var lc net.ListenConfig
-	ln, errListen := lc.Listen(ctx, "tcp", ":"+cfg.BotPort)
-	if errListen != nil {
-		slog.Error("run: http server bind error", slog.String("error", errListen.Error()), slog.String("port", cfg.BotPort))
-		return fmt.Errorf("listen: %w", errListen)
-	}
-
-	srv := &http.Server{Handler: r}
-	go func() {
-		if errSrv := srv.Serve(ln); errSrv != nil && errSrv != http.ErrServerClosed {
-			slog.Error("run: http server serve error", slog.String("error", errSrv.Error()))
-		}
-	}()
-	swaggerUI := fmt.Sprintf("http://127.0.0.1:%s/swagger", cfg.BotPort)
-	slog.Info("run: http server started",
-		slog.String("port", cfg.BotPort),
-		slog.String("swagger_ui", swaggerUI))
-
-	<-ctx.Done()
-
-	err = srv.Shutdown(context.Background())
-	if err != nil {
-		slog.Error("run: server graceful shutdown error", slog.String("error", err.Error()))
+	if httpErr := runBotHTTPServer(ctx, cfg.BotPort, newBotHTTPRouter(bot)); httpErr != nil {
+		return httpErr
 	}
 	slog.Info("run: shutting down")
 	return nil
 }
 
-// attachKafkaConsumer starts the Kafka consumer when enabled; Redis is wired for idempotency when configured.
-func attachKafkaConsumer(ctx context.Context, kafkaCfg config.KafkaSettings, redisCfg config.RedisSettings, sender kafka.MessageSender) (cleanup func(), err error) {
-	cleanup = func() {}
+func runBotHTTPServer(ctx context.Context, port string, handler http.Handler) error {
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", ":"+port)
+	if err != nil {
+		slog.Error("run: http server bind error", slog.String("error", err.Error()), slog.String("port", port))
+		return fmt.Errorf("listen: %w", err)
+	}
+
+	srv := &http.Server{Handler: handler}
+	go func() {
+		if errSrv := srv.Serve(ln); errSrv != nil && errSrv != http.ErrServerClosed {
+			slog.Error("run: http server serve error", slog.String("error", errSrv.Error()))
+		}
+	}()
+	swaggerUI := fmt.Sprintf("http://127.0.0.1:%s/swagger", port)
+	slog.Info("run: http server started",
+		slog.String("port", port),
+		slog.String("swagger_ui", swaggerUI))
+
+	<-ctx.Done()
+
+	if shutErr := srv.Shutdown(context.Background()); shutErr != nil {
+		slog.Error("run: server graceful shutdown error", slog.String("error", shutErr.Error()))
+	}
+	return nil
+}
+
+func newKafkaConsumer(ctx context.Context, kafkaCfg config.KafkaSettings, redisCfg config.RedisSettings, sender kafka.MessageSender) (*kafka.Consumer, func(), error) {
+	cleanup := func() {}
 	if !kafkaCfg.Cluster.Enabled {
-		return cleanup, nil
+		return nil, cleanup, nil
 	}
 
 	var idem kafka.IdempotencyStore
 	if redisCfg.Enabled {
-		redisStore := botredis.New(botredis.Config{
-			Addr:      redisCfg.Addr,
-			Password:  redisCfg.Password,
-			DB:        redisCfg.DB,
-			KeyPrefix: redisCfg.KeyPrefix,
-			TTL:       redisCfg.TTL,
-		})
+		redisStore := botredis.New(redisCfg)
 		if perr := redisStore.Ping(ctx); perr != nil {
-			return nil, fmt.Errorf("bot run: redis ping: %w", perr)
+			return nil, nil, fmt.Errorf("bot run: redis ping: %w", perr)
 		}
 		prev := cleanup
 		cleanup = func() {
@@ -118,26 +122,20 @@ func attachKafkaConsumer(ctx context.Context, kafkaCfg config.KafkaSettings, red
 		idem = redisStore
 	}
 
-	kafkaConsumer, kerr := kafka.NewConsumer(kafkaCfg.Cluster, kafkaCfg.Consumer, sender, idem)
+	consumer, kerr := kafka.NewConsumer(kafkaCfg.Cluster, kafkaCfg.Consumer, sender, idem)
 	if kerr != nil {
 		cleanup()
-		return nil, fmt.Errorf("bot run: kafka consumer: %w", kerr)
+		return nil, nil, fmt.Errorf("bot run: kafka consumer: %w", kerr)
 	}
 	prev := cleanup
 	cleanup = func() {
 		prev()
-		if cerr := kafkaConsumer.Close(); cerr != nil {
+		if cerr := consumer.Close(); cerr != nil {
 			slog.Error("kafka consumer close error", slog.String("error", cerr.Error()), slog.String("event", "kafka"))
 		}
 	}
 
-	go func() {
-		if rerr := kafkaConsumer.Run(ctx); rerr != nil {
-			slog.Error("kafka consumer running error", slog.String("error", rerr.Error()), slog.String("event", "kafka"))
-		}
-	}()
-
-	return cleanup, nil
+	return consumer, cleanup, nil
 }
 
 func newBotHTTPRouter(sender transporthttp.MessageSender) http.Handler {
