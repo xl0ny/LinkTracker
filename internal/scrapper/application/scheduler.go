@@ -106,16 +106,6 @@ func (s *Scheduler) Run(ctx context.Context) {
 	s.workersWG.Wait()
 }
 
-func (s *Scheduler) exec(ctx context.Context, fn func(ctx context.Context) error) error {
-	if s.transactor == nil {
-		return fn(ctx)
-	}
-	if err := s.transactor.Do(ctx, fn); err != nil {
-		return fmt.Errorf("scheduler: transactor: %w", err)
-	}
-	return nil
-}
-
 type linkProcessError struct {
 	ChatID int64
 	Link   string
@@ -154,11 +144,17 @@ func (s *Scheduler) withCommitUpdates(ctx context.Context, sub domain.Subscribed
 		}
 		return nil
 	}
-	return s.exec(ctx, work)
+	if s.transactor == nil {
+		return work(ctx)
+	}
+	if err := s.transactor.Do(ctx, work); err != nil {
+		return fmt.Errorf("scheduler: transactor: %w", err)
+	}
+	return nil
 }
 
 func (s *Scheduler) withCommit(ctx context.Context, sub domain.SubscribedLink, description string, latest time.Time) error {
-	return s.exec(ctx, func(ctx context.Context) error {
+	work := func(ctx context.Context) error {
 		if nfErr := s.botNotifier.Notify(ctx, sub.ChatID, sub.Link, description); nfErr != nil {
 			return fmt.Errorf("notify update: %w", nfErr)
 		}
@@ -166,7 +162,14 @@ func (s *Scheduler) withCommit(ctx context.Context, sub domain.SubscribedLink, d
 			return fmt.Errorf("update link date: %w", upErr)
 		}
 		return nil
-	})
+	}
+	if s.transactor == nil {
+		return work(ctx)
+	}
+	if err := s.transactor.Do(ctx, work); err != nil {
+		return fmt.Errorf("scheduler: transactor: %w", err)
+	}
+	return nil
 }
 
 func (s *Scheduler) reportFailedLinks(ctx context.Context, failedByChat map[int64][]string) {

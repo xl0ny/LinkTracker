@@ -112,26 +112,31 @@ func (c *Consumer) Close() error {
 			errs = append(errs, wrapConsumerError("close dlq writer", err))
 		}
 	}
+	if closer, ok := c.idempotent.(interface{ Close() error }); ok {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, wrapConsumerError("close idempotency store", err))
+		}
+	}
 	return errors.Join(errs...)
 }
 
 func (c *Consumer) Run(ctx context.Context) error {
-	n := len(c.updateReaders) + len(c.failedReaders)
+	readerGoroutines := len(c.updateReaders) + len(c.failedReaders)
 	var wg sync.WaitGroup
-	errCh := make(chan error, n)
+	errCh := make(chan error, readerGoroutines)
 
-	wg.Add(n)
+	wg.Add(readerGoroutines)
 	for _, reader := range c.updateReaders {
-		go func(r *kafkago.Reader) {
+		go func() {
 			defer wg.Done()
-			errCh <- c.consumeTopic(ctx, r, c.decodeUpdate, c.deliverUpdate)
-		}(reader)
+			errCh <- c.consumeTopic(ctx, reader, c.decodeUpdate, c.deliverUpdate)
+		}()
 	}
 	for _, reader := range c.failedReaders {
-		go func(r *kafkago.Reader) {
+		go func() {
 			defer wg.Done()
-			errCh <- c.consumeTopic(ctx, r, c.decodeFailed, c.deliverFailed)
-		}(reader)
+			errCh <- c.consumeTopic(ctx, reader, c.decodeFailed, c.deliverFailed)
+		}()
 	}
 
 	wg.Wait()

@@ -128,12 +128,8 @@ func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.Clien
 		return botclient.NewNotifier(botAPI), nil, nil
 	}
 
-	mode := strings.ToLower(strings.TrimSpace(cfg.Kafka.Producer.Mode))
-	if mode == "" {
-		mode = commoncfg.KafkaProducerModeDirect
-	}
-	switch mode {
-	case commoncfg.KafkaProducerModeDirect:
+	switch cfg.Kafka.Producer.Mode {
+	case commoncfg.KafkaProducerModeDirect, "":
 		n, err := kafka.NewNotifier(ctx, cfg.Kafka.Cluster, cfg.Kafka.Producer.KafkaProducer)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scrapper: kafka notifier: %w", err)

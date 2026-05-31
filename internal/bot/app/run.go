@@ -22,6 +22,7 @@ import (
 	transporthttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/kafka"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/common/httputil/helper"
 )
 
 const workerCount = 5
@@ -41,12 +42,17 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("app run: Link tracker creation error - %w", err)
 	}
 
-	kafkaConsumer, closeKafka, err := newKafkaConsumer(ctx, cfg.Kafka, cfg.Redis, bot)
-	if err != nil {
-		return err
-	}
-	defer closeKafka()
-	if kafkaConsumer != nil {
+	if cfg.Kafka.Cluster.Enabled {
+		var kafkaConsumer *kafka.Consumer
+		kafkaConsumer, err = startKafkaConsumer(ctx, cfg.Kafka, cfg.Redis, bot)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if cerr := kafkaConsumer.Close(); cerr != nil {
+				slog.Error("kafka consumer close error", slog.String("error", cerr.Error()), slog.String("event", "kafka"))
+			}
+		}()
 		go func() {
 			if rerr := kafkaConsumer.Run(ctx); rerr != nil {
 				slog.Error("kafka consumer running error", slog.String("error", rerr.Error()), slog.String("event", "kafka"))
@@ -73,9 +79,35 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	return nil
 }
 
+func startKafkaConsumer(
+	ctx context.Context,
+	kafkaCfg config.KafkaSettings,
+	redisCfg config.RedisSettings,
+	sender kafka.MessageSender,
+) (*kafka.Consumer, error) {
+	var idem kafka.IdempotencyStore
+	if redisCfg.Enabled {
+		redisStore := botredis.New(redisCfg)
+		if pingErr := redisStore.Ping(ctx); pingErr != nil {
+			_ = redisStore.Close()
+			return nil, fmt.Errorf("bot run: redis ping: %w", pingErr)
+		}
+		idem = redisStore
+	}
+
+	consumer, err := kafka.NewConsumer(kafkaCfg.Cluster, kafkaCfg.Consumer, sender, idem)
+	if err != nil {
+		if closer, ok := idem.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
+		return nil, fmt.Errorf("bot run: kafka consumer: %w", err)
+	}
+	return consumer, nil
+}
+
 func runBotHTTPServer(ctx context.Context, port string, handler http.Handler) error {
 	var lc net.ListenConfig
-	ln, err := lc.Listen(ctx, "tcp", ":"+port)
+	ln, err := lc.Listen(ctx, "tcp", helper.ListenAddress(port))
 	if err != nil {
 		slog.Error("run: http server bind error", slog.String("error", err.Error()), slog.String("port", port))
 		return fmt.Errorf("listen: %w", err)
@@ -98,44 +130,6 @@ func runBotHTTPServer(ctx context.Context, port string, handler http.Handler) er
 		slog.Error("run: server graceful shutdown error", slog.String("error", shutErr.Error()))
 	}
 	return nil
-}
-
-func newKafkaConsumer(ctx context.Context, kafkaCfg config.KafkaSettings, redisCfg config.RedisSettings, sender kafka.MessageSender) (*kafka.Consumer, func(), error) {
-	cleanup := func() {}
-	if !kafkaCfg.Cluster.Enabled {
-		return nil, cleanup, nil
-	}
-
-	var idem kafka.IdempotencyStore
-	if redisCfg.Enabled {
-		redisStore := botredis.New(redisCfg)
-		if perr := redisStore.Ping(ctx); perr != nil {
-			return nil, nil, fmt.Errorf("bot run: redis ping: %w", perr)
-		}
-		prev := cleanup
-		cleanup = func() {
-			prev()
-			if cerr := redisStore.Close(); cerr != nil {
-				slog.Error("redis close error", slog.String("error", cerr.Error()), slog.String("event", "redis"))
-			}
-		}
-		idem = redisStore
-	}
-
-	consumer, kerr := kafka.NewConsumer(kafkaCfg.Cluster, kafkaCfg.Consumer, sender, idem)
-	if kerr != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("bot run: kafka consumer: %w", kerr)
-	}
-	prev := cleanup
-	cleanup = func() {
-		prev()
-		if cerr := consumer.Close(); cerr != nil {
-			slog.Error("kafka consumer close error", slog.String("error", cerr.Error()), slog.String("event", "kafka"))
-		}
-	}
-
-	return consumer, cleanup, nil
 }
 
 func newBotHTTPRouter(sender transporthttp.MessageSender) http.Handler {

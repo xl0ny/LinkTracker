@@ -2,9 +2,11 @@ package config
 
 import "time"
 
+type KafkaProducerMode string
+
 const (
-	KafkaProducerModeDirect = "direct"
-	KafkaProducerModeOutbox = "outbox"
+	KafkaProducerModeDirect KafkaProducerMode = "direct"
+	KafkaProducerModeOutbox KafkaProducerMode = "outbox"
 )
 
 type KafkaTopic struct {
@@ -39,7 +41,7 @@ type KafkaConsumer struct {
 }
 
 type KafkaProducer struct {
-	Mode string `yaml:"mode" validate:"required,oneof=direct outbox"`
+	Mode KafkaProducerMode `yaml:"mode"`
 
 	ProducerClient string `yaml:"producer_client"`
 

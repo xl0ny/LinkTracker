@@ -10,7 +10,7 @@ import (
 )
 
 // idempotencyClaimed просто метка того, что ключ eventID уже обработан.
-const idempotencyClaimed = "1"
+const idempotencyClaimed = true
 
 type Idempotency struct {
 	client    *goredis.Client

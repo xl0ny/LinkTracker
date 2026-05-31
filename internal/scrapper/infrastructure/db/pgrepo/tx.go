@@ -28,7 +28,7 @@ func (r *Repository) Do(ctx context.Context, fn func(ctx context.Context) error)
 	if err != nil {
 		return fmt.Errorf("repo: Do begin (%w)", err)
 	}
-	defer rollbackTx(ctx, tx)
+	defer tx.Rollback(ctx) //nolint:errcheck // abort on error; ErrTxClosed after Commit is expected in defer
 
 	if fnErr := fn(context.WithValue(ctx, txKey{}, tx)); fnErr != nil {
 		return fnErr
@@ -37,8 +37,4 @@ func (r *Repository) Do(ctx context.Context, fn func(ctx context.Context) error)
 		return fmt.Errorf("repo: Do commit (%w)", commitErr)
 	}
 	return nil
-}
-
-func rollbackTx(ctx context.Context, tx pgx.Tx) {
-	_ = tx.Rollback(ctx)
 }
