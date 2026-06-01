@@ -20,14 +20,19 @@ type Dispatcher struct {
 	handlers map[string]Command
 	plain    PlainMessageHandler
 	state    *TrackStateStore
+	metrics  commandMetrics
 }
 
-func NewDispatcher(cmds []Command, plain PlainMessageHandler, state *TrackStateStore) *Dispatcher {
+type commandMetrics interface {
+	IncCommand(command string)
+}
+
+func NewDispatcher(cmds []Command, plain PlainMessageHandler, state *TrackStateStore, m commandMetrics) *Dispatcher {
 	h := make(map[string]Command, len(cmds))
 	for _, c := range cmds {
 		h[c.Name()] = c
 	}
-	return &Dispatcher{handlers: h, plain: plain, state: state}
+	return &Dispatcher{handlers: h, plain: plain, state: state, metrics: m}
 }
 
 func (d *Dispatcher) Dispatch(action domain.Action) (text string, err error) {
@@ -40,6 +45,9 @@ func (d *Dispatcher) Dispatch(action domain.Action) (text string, err error) {
 }
 
 func (d *Dispatcher) dispatchCommand(action domain.Action) (string, error) {
+	if d.metrics != nil {
+		d.metrics.IncCommand(action.Command)
+	}
 	if action.Command == "cancel" {
 		d.state.Clear(action.ChatID)
 		return "Отменено.", nil

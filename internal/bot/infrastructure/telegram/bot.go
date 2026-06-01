@@ -6,18 +6,20 @@ import (
 	"log/slog"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	commands "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 )
 
 const actionBuf = 100
 
 type bot struct {
-	api *tgbotapi.BotAPI
+	api     *tgbotapi.BotAPI
+	metrics *metrics.Bot
 }
 
 //revive:disable-next-line:unexported-return returning *bot is intentional (internal impl)
-func NewBot(telegramToken string) (*bot, error) {
+func NewBot(telegramToken string, m *metrics.Bot) (*bot, error) {
 	api, err := tgbotapi.NewBotAPI(telegramToken)
 	if err != nil {
 		return nil, fmt.Errorf("bot: initialization error - %w", err)
@@ -25,7 +27,8 @@ func NewBot(telegramToken string) (*bot, error) {
 	slog.Info("telegram: bot authorized", slog.String("bot_username", api.Self.UserName))
 
 	return &bot{
-		api: api,
+		api:     api,
+		metrics: m,
 	}, nil
 }
 
@@ -52,6 +55,9 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 			case <-ctx.Done():
 				return
 			case update := <-apiUpdates:
+				if bot.metrics != nil {
+					bot.metrics.TelegramRequests.WithLabelValues(telegramRequestType(update)).Inc()
+				}
 				if update.Message == nil {
 					continue
 				}
@@ -67,7 +73,20 @@ func (bot *bot) ReceiveUpdates(ctx context.Context) <-chan domain.Action {
 	return ch
 }
 
-func (bot *bot) SetMenuCommands(cmds []commands.Command) {
+func telegramRequestType(update tgbotapi.Update) string {
+	if update.CallbackQuery != nil {
+		return "callback"
+	}
+	if update.Message != nil && update.Message.IsCommand() {
+		return "command"
+	}
+	if update.Message != nil {
+		return "plain_message"
+	}
+	return "other"
+}
+
+func (bot *bot) SetMenuCommands(cmds []application.Command) {
 	botCommands := make([]tgbotapi.BotCommand, 0, len(cmds))
 	for _, c := range cmds {
 		botCommands = append(botCommands, tgbotapi.BotCommand{

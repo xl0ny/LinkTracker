@@ -18,9 +18,11 @@ Telegram-бот, который отслеживает изменения на �
 
 3. **Schema Registry** после поднятия кластера: схемы подтягиваются **при старте** scrapper/bot (REST `POST /subjects/.../versions`). Для ручной регистрации: `make avro-registrate` (по умолчанию `SCHEMA_REGISTRY_URL=http://localhost:18081`).
 
-4. **Порты**: бот HTTP — `cmd/bot/config.yaml` (`bot_port`, по умолчанию 8081), scrapper — `cmd/scrapper/config.yaml` (`port`, 8080), AI Agent health-чек — `cmd/agent/config.yaml` (`port`, 8082).
+4. **Порты**: бот HTTP — `cmd/bot/config.yaml` (`bot_port`, по умолчанию 8081), метрики бота — `metrics_port` (8011), scrapper — `cmd/scrapper/config.yaml` (`port`, 8080), AI Agent health-чек — `cmd/agent/config.yaml` (`port`, 8082).
 
-5. **Запуск приложений**: `make run-all` либо по одному сервису:
+5. **Мониторинг** (Prometheus + Grafana): `make compose-observability` — см. [OBSERVABILITY.md](OBSERVABILITY.md). Prometheus: http://localhost:9090, Grafana: http://localhost:3000.
+
+6. **Запуск приложений**: `make run-all` либо по одному сервису:
    - `make run-bot`
    - `make run-scrapper`
    - `make run-agent`

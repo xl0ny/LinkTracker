@@ -1,0 +1,51 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: link-tracker
+    folder: Link Tracker
+    interval: 1m
+    rules:
+      - uid: link-tracker-ram-high
+        title: Process RSS above 512MiB
+        condition: B
+        for: 5m
+        annotations:
+          summary: "High RSS for {{ $labels.app }}"
+          description: "process_resident_memory_bytes exceeded 512MiB for 5m"
+        labels:
+          severity: warning
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              editorMode: code
+              expr: max(process_resident_memory_bytes) by (app)
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [536870912]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              type: threshold

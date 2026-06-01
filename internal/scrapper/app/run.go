@@ -17,6 +17,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/checker"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/metricsrepo"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/orm"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/pgrepo"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/github"
@@ -28,6 +29,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/valkey"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/handler"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/resilience"
 )
 
@@ -42,6 +44,7 @@ type Repository interface {
 var (
 	_ Repository = (*pgrepo.Repository)(nil)
 	_ Repository = (*orm.Repository)(nil)
+	_ Repository = (*metricsrepo.Repository)(nil)
 )
 
 const kafkaProducerModeDirect = "direct"
@@ -50,11 +53,23 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	repo, err := newChatRepository(ctx, cfg)
+	reg := metrics.New("scrapper")
+	scrapperMetrics := metrics.NewScrapper(reg)
+	metrics.StartPusher(ctx, reg, metrics.PushConfig{
+		Enabled:  cfg.Metrics.Pushgateway.Enabled,
+		URL:      cfg.Metrics.Pushgateway.URL,
+		Job:      cfg.Metrics.Pushgateway.Job,
+		Interval: cfg.Metrics.Pushgateway.Interval,
+	})
+
+	rawRepo, err := newChatRepository(ctx, cfg)
 	if err != nil {
 		return err
 	}
+	repo := metricsrepo.Wrap(rawRepo, scrapperMetrics)
 	defer repo.Close()
+
+	go refreshLinksOnTrack(ctx, repo, scrapperMetrics, cfg.Metrics.RefreshInterval)
 
 	uc, closeCache, err := buildUseCase(ctx, repo, cfg)
 	if err != nil {
@@ -64,9 +79,14 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	h := handler.NewHandler(uc)
 	r := chi.NewRouter()
-	r.Use(resilience.RateLimitMiddleware(cfg.Resilience.RateLimit))
-	mountSwagger(r)
-	api.HandlerFromMux(h, r)
+	r.Handle("/metrics", reg.Handler())
+	r.Group(func(r chi.Router) {
+		r.Use(scrapperMetrics.RED.Middleware)
+		r.Use(scrapperMetrics.APIRequestsMiddleware)
+		r.Use(resilience.RateLimitMiddleware(cfg.Resilience.RateLimit))
+		mountSwagger(r)
+		api.HandlerFromMux(h, r)
+	})
 
 	botHTTP := resilience.NewHTTPClient("bot", cfg.Resilience)
 	botAPI, err := botclient.NewClientWithResponses(cfg.BotURL, botclient.WithHTTPClient(botHTTP))
@@ -77,9 +97,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	soHTTP := resilience.NewHTTPClient("stackoverflow", cfg.Resilience)
 	gh := github.NewClient(ghHTTP, os.Getenv("GITHUB_TOKEN"))
 	so := stackoverflow.NewClient(soHTTP)
-	lc := checker.New(gh, so)
+	lc := checker.WithMetrics(checker.New(gh, so), scrapperMetrics)
 
-	notifier, publisher, npErr := buildNotifier(ctx, repo, botAPI, cfg)
+	notifier, publisher, npErr := buildNotifier(ctx, repo, botAPI, cfg, scrapperMetrics)
 	if npErr != nil {
 		return npErr
 	}
@@ -93,9 +113,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		cfg.Scheduler.Interval,
 	)
 	if publisher != nil {
-		if tr, ok := repo.(application.TxRunner); ok {
-			sch.SetTxRunner(tr)
-		}
+		sch.SetTxRunner(repo)
 		go publisher.Run(ctx)
 		defer func() {
 			if cerr := publisher.Close(); cerr != nil {
@@ -164,7 +182,13 @@ func buildUseCase(ctx context.Context, repo Repository, cfg *config.Config) (han
 	return application.NewCachedChatUC(base, cache), cache.Close, nil
 }
 
-func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.ClientWithResponses, cfg *config.Config) (application.BotNotifier, *outbox.Publisher, error) {
+func buildNotifier(
+	ctx context.Context,
+	repo Repository,
+	botAPI *botclient.ClientWithResponses,
+	cfg *config.Config,
+	m *metrics.Scrapper,
+) (application.BotNotifier, *outbox.Publisher, error) {
 	primary := botclient.NewNotifier(botAPI)
 	if !cfg.Kafka.Kafka.Enabled {
 		return primary, nil, nil
@@ -176,7 +200,7 @@ func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.Clien
 	}
 	switch mode {
 	case kafkaProducerModeDirect:
-		fallback, err := kafka.NewNotifier(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer)
+		fallback, err := kafka.NewNotifier(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer, m)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scrapper: kafka notifier: %w", err)
 		}
@@ -191,7 +215,7 @@ func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.Clien
 		if err != nil {
 			return nil, nil, fmt.Errorf("scrapper: outbox notifier: %w", err)
 		}
-		publisher := outbox.NewPublisher(pollRepo, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer, cfg.Kafka.Producer.Outbox)
+		publisher := outbox.NewPublisher(pollRepo, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer, cfg.Kafka.Producer.Outbox, m)
 		return notifier.NewFallback(primary, fallback), publisher, nil
 	default:
 		return nil, nil, fmt.Errorf("scrapper: unknown kafka producer mode %q (expected direct|outbox)", cfg.Kafka.Producer.Mode)

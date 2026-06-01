@@ -13,6 +13,7 @@ import (
 	kafkago "github.com/segmentio/kafka-go"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/avro/registry"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 )
 
 type MessageSender interface {
@@ -34,11 +35,21 @@ type Consumer struct {
 	idempotent IdempotencyStore
 	maxRetries int
 	retryDelay time.Duration
+
+	processedTopic string
+	failedTopic    string
+	metrics        *metrics.Bot
 }
 
 const topicReaderGoroutines = 2
 
-func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, sender MessageSender, idem IdempotencyStore) (*Consumer, error) {
+func NewConsumer(
+	kconfig config.Kafka,
+	cconfig config.KafkaConsumer,
+	sender MessageSender,
+	idem IdempotencyStore,
+	m *metrics.Bot,
+) (*Consumer, error) {
 	if kconfig.SchemaRegistryURL == "" {
 		return nil, errors.New("kafka-consumer: schema_registry_url required")
 	}
@@ -75,14 +86,17 @@ func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, sender Mess
 	}
 
 	return &Consumer{
-		updateReader: kafkago.NewReader(updateCfg),
-		failedReader: kafkago.NewReader(failedCfg),
-		dlqWriter:    dlqWriter,
-		sr:           registry.NewClient(kconfig.SchemaRegistryURL),
-		sender:       sender,
-		idempotent:   idem,
-		maxRetries:   cconfig.ProcessRetries,
-		retryDelay:   cconfig.RetryDelay,
+		updateReader:   kafkago.NewReader(updateCfg),
+		failedReader:   kafkago.NewReader(failedCfg),
+		dlqWriter:      dlqWriter,
+		sr:             registry.NewClient(kconfig.SchemaRegistryURL),
+		sender:         sender,
+		idempotent:     idem,
+		maxRetries:     cconfig.ProcessRetries,
+		retryDelay:     cconfig.RetryDelay,
+		processedTopic: kconfig.ProcessedUpdatesTopic,
+		failedTopic:    kconfig.FailedLinksTopic,
+		metrics:        m,
 	}, nil
 }
 
@@ -275,6 +289,12 @@ func (c *Consumer) decodeFailed(ctx context.Context, msg kafkago.Message) (int64
 }
 
 func (c *Consumer) deliverUpdate(ctx context.Context, record map[string]any) error {
+	start := time.Now()
+	defer func() {
+		if c.metrics != nil {
+			metrics.ObserveDuration(c.metrics.CommandDuration, metrics.ScopeScrapperAsync, c.processedTopic, start)
+		}
+	}()
 	first, err := c.acquireEvent(ctx, record)
 	if err != nil {
 		return wrapConsumerError("idempotency check", err)
@@ -293,6 +313,12 @@ func (c *Consumer) deliverUpdate(ctx context.Context, record map[string]any) err
 }
 
 func (c *Consumer) deliverFailed(ctx context.Context, chatID int64, record map[string]any) error {
+	start := time.Now()
+	defer func() {
+		if c.metrics != nil {
+			metrics.ObserveDuration(c.metrics.CommandDuration, metrics.ScopeScrapperAsync, c.failedTopic, start)
+		}
+	}()
 	first, err := c.acquireEvent(ctx, record)
 	if err != nil {
 		return wrapConsumerError("idempotency check", err)

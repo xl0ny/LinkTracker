@@ -20,7 +20,12 @@ func NewLinkTracker(serverURL string, httpClient *http.Client) (application.Link
 	if url == "" {
 		return nil, errors.New("scrapper URL is required")
 	}
-	opts := []ClientOption{}
+	opts := []ClientOption{
+		WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+			req.Header.Set("X-Metrics-Source", "bot")
+			return nil
+		}),
+	}
 	if httpClient != nil {
 		opts = append(opts, WithHTTPClient(httpClient))
 	}

@@ -52,6 +52,16 @@ type Config struct {
 
 	Resilience resilience.Config `yaml:"resilience"`
 
+	Metrics struct {
+		RefreshInterval time.Duration `yaml:"refresh_interval"`
+		Pushgateway     struct {
+			Enabled  bool          `yaml:"enabled"`
+			URL      string        `yaml:"url"`
+			Job      string        `yaml:"job"`
+			Interval time.Duration `yaml:"interval"`
+		} `yaml:"pushgateway"`
+	} `yaml:"metrics"`
+
 	Valkey struct {
 		Enabled     bool          `yaml:"enabled"`
 		Addrs       []string      `yaml:"addrs"`

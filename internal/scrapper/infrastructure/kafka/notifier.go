@@ -13,6 +13,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/avro/registry"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 )
 
 const (
@@ -26,9 +27,10 @@ type Notifier struct {
 	failedWriter *kafkago.Writer
 	rawEnc       *registry.SingleEncoder
 	failedEnc    *registry.SingleEncoder
+	metrics      *metrics.Scrapper
 }
 
-func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.KafkaProducer) (*Notifier, error) {
+func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.KafkaProducer, m *metrics.Scrapper) (*Notifier, error) {
 	if kconfig.SchemaRegistryURL == "" {
 		return nil, errors.New("kafka-notifier: schema_registry_url required")
 	}
@@ -65,6 +67,7 @@ func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.Kafka
 		failedWriter: kafkago.NewWriter(failedCfg),
 		rawEnc:       rawEnc,
 		failedEnc:    failedEnc,
+		metrics:      m,
 	}, nil
 }
 
@@ -82,7 +85,7 @@ func (p *Notifier) Notify(ctx context.Context, chatID int64, link domain.Link, d
 		return fmt.Errorf("kafka-notifier: encode raw payload: %w", err)
 	}
 
-	err = p.rawWriter.WriteMessages(ctx, kafkago.Message{
+	err = writeMessages(ctx, p.rawWriter, p.metrics, p.rawWriter.Topic, kafkago.Message{
 		Key:   []byte(strconv.FormatInt(chatID, 10)),
 		Value: value,
 	})
@@ -108,7 +111,7 @@ func (p *Notifier) NotifyFailedLinks(ctx context.Context, chatID int64, links []
 		return fmt.Errorf("kafka-notifier: encode failed avro payload: %w", err)
 	}
 
-	err = p.failedWriter.WriteMessages(ctx, kafkago.Message{
+	err = writeMessages(ctx, p.failedWriter, p.metrics, p.failedWriter.Topic, kafkago.Message{
 		Key:   []byte(strconv.FormatInt(chatID, 10)),
 		Value: value,
 	})

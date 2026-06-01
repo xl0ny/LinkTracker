@@ -1,0 +1,54 @@
+# PromQL из дашбордов Link Tracker
+
+# --- RED & Runtime (dashboard: link-tracker-red) ---
+
+# HTTP RPS по маршруту
+sum(rate(http_requests_total{app="$app"}[5m])) by (route)
+
+# Доля HTTP 5xx
+sum(rate(http_requests_total{app="$app",status=~"5.."}[5m])) / sum(rate(http_requests_total{app="$app"}[5m]))
+
+# HTTP latency p95
+histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{app="$app"}[5m])) by (le, route))
+
+# RSS процесса
+process_resident_memory_bytes{app="$app"}
+
+# Heap inuse (Go)
+go_memstats_heap_inuse_bytes{app="$app"}
+
+# --- Business (dashboard: link-tracker-business) ---
+
+# Telegram RPS по типу запроса
+sum(rate(telegram_requests_total{app="$app"}[5m])) by (request_type)
+
+# Нотификации в секунду
+rate(sent_notification_total{app="$app"}[5m])
+
+# Ссылки на мониторинге
+links_on_track_total{app="$app"}
+
+# Scrape p50/p95/p99 (внешние источники)
+histogram_quantile(0.50, sum(rate(request_duration_ms_total_bucket{app="$app",scope="external_source"}[5m])) by (le, scope_type))
+histogram_quantile(0.95, sum(rate(request_duration_ms_total_bucket{app="$app",scope="external_source"}[5m])) by (le, scope_type))
+histogram_quantile(0.99, sum(rate(request_duration_ms_total_bucket{app="$app",scope="external_source"}[5m])) by (le, scope_type))
+
+# Публикация в LLM pipeline (Kafka link.raw-updates)
+histogram_quantile(0.95, sum(rate(request_duration_ms_total_bucket{app="scrapper",scope="llm_agent"}[5m])) by (le, scope_type))
+
+# Bot command duration p50/p95/p99
+histogram_quantile(0.50, sum(rate(command_duration_ms_total_bucket{app="$app"}[5m])) by (le, scope, scope_type))
+histogram_quantile(0.95, sum(rate(command_duration_ms_total_bucket{app="$app"}[5m])) by (le, scope, scope_type))
+histogram_quantile(0.99, sum(rate(command_duration_ms_total_bucket{app="$app"}[5m])) by (le, scope, scope_type))
+
+# Команды бота RPS
+sum(rate(command_requests_total{app="$app"}[5m])) by (command)
+
+# Scrapper API RPS по источнику
+sum(rate(api_requests_total{app="scrapper"}[5m])) by (source)
+
+# DB latency p95
+histogram_quantile(0.95, sum(rate(request_duration_ms_total_bucket{app="scrapper",scope="database"}[5m])) by (le, scope_type))
+
+# Alert: высокий RSS (>512 MiB)
+process_resident_memory_bytes{app="$app"} > 536870912

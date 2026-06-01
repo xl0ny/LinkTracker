@@ -529,3 +529,32 @@ func (r *Repository) DeleteTag(ctx context.Context, id int64) error {
 	}
 	return nil
 }
+
+func (r *Repository) CountTrackedLinksBySource(ctx context.Context) (map[string]int, error) {
+	type row struct {
+		TrackedSource string
+		Count         int
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).Raw(`
+SELECT tracked_source, COUNT(*)::int AS count
+FROM (
+	SELECT DISTINCT l.id,
+		CASE
+			WHEN l.url LIKE '%github.com%' THEN 'github'
+			WHEN l.url LIKE '%stackoverflow.com%' THEN 'stackoverflow'
+		END AS tracked_source
+	FROM links l
+	INNER JOIN subscriptions s ON s.link_id = l.id
+) t
+WHERE tracked_source IS NOT NULL
+GROUP BY tracked_source`).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("orm repo: CountTrackedLinksBySource (%w)", err)
+	}
+	out := make(map[string]int, len(rows))
+	for _, row := range rows {
+		out[row.TrackedSource] = row.Count
+	}
+	return out, nil
+}

@@ -32,6 +32,8 @@ help:
 	@echo "  \033[36mmake compose-valkey-down\033[0m / \033[36mcompose-valkey-purge\033[0m - Остановить / удалить кластер"
 	@echo "  \033[36mmake loadtest-seed\033[0m - Засеять Postgres данными для нагрузочных тестов"
 	@echo "  \033[36mmake loadtest-run SCENARIO=name\033[0m - Прогнать нагрузочный тест и дописать отчёт"
+	@echo "  \033[36mmake compose-observability\033[0m - Prometheus (9090), Grafana (3000), Pushgateway (9091)"
+	@echo "  \033[36mmake docker-build-apps\033[0m - Build bot and scrapper Docker images"
 	@echo "  \033[36mmake lint\033[0m - Run golangci-lint"
 
 .PHONY: build
@@ -125,6 +127,16 @@ generate-api:
 .PHONY: run-db-migration
 run-db-migration:
 	@go run ./migrations/migrator/main.go
+
+.PHONY: compose-observability
+compose-observability:
+	@echo "Prometheus http://localhost:9090  Grafana http://localhost:3000 (admin/admin)  Pushgateway :9091"
+	@docker compose up -d prometheus grafana pushgateway
+
+.PHONY: docker-build-apps
+docker-build-apps:
+	@docker build -f deploy/docker/Dockerfile.scrapper -t link-tracker-scrapper:latest .
+	@docker build -f deploy/docker/Dockerfile.bot -t link-tracker-bot:latest .
 
 .PHONY: compose-db
 compose-db:

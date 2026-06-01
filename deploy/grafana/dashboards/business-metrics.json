@@ -1,0 +1,145 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Входящие запросы Telegram по типу",
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "sum(rate(telegram_requests_total{app=\"$app\"}[5m])) by (request_type)",
+          "legendFormat": "{{request_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Telegram requests / sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Скорость отправки нотификаций пользователям",
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "rate(sent_notification_total{app=\"$app\"}[5m])",
+          "legendFormat": "notifications/s",
+          "refId": "A"
+        }
+      ],
+      "title": "Sent notifications / sec",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Активные ссылки на мониторинге по источнику",
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "links_on_track_total{app=\"$app\"}",
+          "legendFormat": "{{tracked_source}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Links on track",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Перцентили длительности scrape по внешнему источнику",
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(request_duration_ms_total_bucket{app=\"$app\",scope=\"external_source\"}[5m])) by (le, scope_type))",
+          "legendFormat": "{{scope_type}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(request_duration_ms_total_bucket{app=\"$app\",scope=\"external_source\"}[5m])) by (le, scope_type))",
+          "legendFormat": "{{scope_type}} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(request_duration_ms_total_bucket{app=\"$app\",scope=\"external_source\"}[5m])) by (le, scope_type))",
+          "legendFormat": "{{scope_type}} p99",
+          "refId": "C"
+        }
+      ],
+      "title": "Scrape duration percentiles",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Перцентили длительности вызовов Scrapper API из бота",
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(command_duration_ms_total_bucket{app=\"$app\"}[5m])) by (le, scope, scope_type))",
+          "legendFormat": "{{scope}}/{{scope_type}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(command_duration_ms_total_bucket{app=\"$app\"}[5m])) by (le, scope, scope_type))",
+          "legendFormat": "{{scope}}/{{scope_type}} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(command_duration_ms_total_bucket{app=\"$app\"}[5m])) by (le, scope, scope_type))",
+          "legendFormat": "{{scope}}/{{scope_type}} p99",
+          "refId": "C"
+        }
+      ],
+      "title": "Bot command duration percentiles",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Обработанные команды бота",
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "sum(rate(command_requests_total{app=\"$app\"}[5m])) by (command)",
+          "legendFormat": "/{{command}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Bot commands / sec",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["link-tracker", "business"],
+  "templating": {
+    "list": [
+      {
+        "current": { "text": "scrapper", "value": "scrapper" },
+        "label": "app",
+        "name": "app",
+        "options": [
+          { "text": "scrapper", "value": "scrapper" },
+          { "text": "bot", "value": "bot" }
+        ],
+        "query": "scrapper,bot",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Link Tracker — Business Metrics",
+  "uid": "link-tracker-business",
+  "version": 1
+}

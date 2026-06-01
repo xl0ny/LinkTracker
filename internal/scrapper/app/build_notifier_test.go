@@ -12,7 +12,12 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/notifier"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 )
+
+func testScrapperMetrics() *metrics.Scrapper {
+	return metrics.NewScrapper(metrics.New("test"))
+}
 
 func TestBuildNotifier_kafkaDisabledUsesHTTPNotifier(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
@@ -23,7 +28,7 @@ func TestBuildNotifier_kafkaDisabledUsesHTTPNotifier(t *testing.T) {
 	var cfg config.Config
 	cfg.Kafka.Kafka.Enabled = false
 
-	n, p, err := buildNotifier(context.Background(), nil, api, &cfg)
+	n, p, err := buildNotifier(context.Background(), nil, api, &cfg, testScrapperMetrics())
 	require.NoError(t, err)
 	require.Nil(t, p)
 	require.NotNil(t, n)
@@ -50,7 +55,7 @@ func TestBuildNotifier_kafkaEnabledUsesHTTPWithFallback(t *testing.T) {
 	cfg.Kafka.Producer.RequiredACK = -1
 	cfg.Kafka.Producer.MaxAttempts = 1
 
-	n, p, err := buildNotifier(context.Background(), nil, api, &cfg)
+	n, p, err := buildNotifier(context.Background(), nil, api, &cfg, testScrapperMetrics())
 	if err != nil {
 		t.Skip("kafka notifier init:", err)
 	}

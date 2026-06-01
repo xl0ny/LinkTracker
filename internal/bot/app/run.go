@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	botopenapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/api"
@@ -22,6 +23,8 @@ import (
 	transporthttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/kafka"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/metricssender"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/resilience"
 )
 
@@ -31,19 +34,30 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	bot, err := telegram.NewBot(cfg.TelegramToken)
+	reg := metrics.New("bot")
+	botMetrics := metrics.NewBot(reg)
+	metrics.StartPusher(ctx, reg, metrics.PushConfig{
+		Enabled:  cfg.Metrics.Pushgateway.Enabled,
+		URL:      cfg.Metrics.Pushgateway.URL,
+		Job:      cfg.Metrics.Pushgateway.Job,
+		Interval: cfg.Metrics.Pushgateway.Interval,
+	})
+
+	bot, err := telegram.NewBot(cfg.TelegramToken, botMetrics)
 	if err != nil {
 		slog.Error("run: bot initialization error", slog.String("error", err.Error()))
 		return fmt.Errorf("telegram bot: %w", err)
 	}
+	sender := metricssender.Wrap(bot, botMetrics)
 
 	scrapperHTTP := resilience.NewHTTPClient("scrapper", cfg.Resilience)
 	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL, scrapperHTTP)
 	if err != nil {
 		return fmt.Errorf("app run: Link tracker creation error - %w", err)
 	}
+	tracker = scrapperclient.Track(tracker, botMetrics)
 
-	kafkaCleanup, kafkaErr := attachKafkaConsumer(ctx, cfg, bot)
+	kafkaCleanup, kafkaErr := attachKafkaConsumer(ctx, cfg, sender, botMetrics)
 	if kafkaErr != nil {
 		return kafkaErr
 	}
@@ -55,13 +69,16 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	bot.SetMenuCommands(commands)
 
 	actions := bot.ReceiveUpdates(ctx)
-	dispatcher := application.NewDispatcher(commands, trackCmd, stateStore)
+	dispatcher := application.NewDispatcher(commands, trackCmd, stateStore, botMetrics)
 
 	for range workerCount {
-		go application.Worker(actions, dispatcher, bot)
+		go application.Worker(actions, dispatcher, sender)
 	}
 
-	r := newBotHTTPRouter(bot)
+	metricsCleanup := runMetricsServer(ctx, reg, cfg.MetricsPort)
+	defer metricsCleanup()
+
+	r := newBotHTTPRouter(sender, botMetrics)
 
 	var lc net.ListenConfig
 	ln, errListen := lc.Listen(ctx, "tcp", ":"+cfg.BotPort)
@@ -92,7 +109,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 }
 
 // attachKafkaConsumer starts the Kafka consumer when enabled; Redis is wired for idempotency when configured.
-func attachKafkaConsumer(ctx context.Context, cfg *config.Config, sender kafka.MessageSender) (cleanup func(), err error) {
+func attachKafkaConsumer(
+	ctx context.Context,
+	cfg *config.Config,
+	sender kafka.MessageSender,
+	m *metrics.Bot,
+) (cleanup func(), err error) {
 	cleanup = func() {}
 	if !cfg.Kafka.Kafka.Enabled {
 		return cleanup, nil
@@ -120,7 +142,7 @@ func attachKafkaConsumer(ctx context.Context, cfg *config.Config, sender kafka.M
 		idem = redisStore
 	}
 
-	kafkaConsumer, kerr := kafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, sender, idem)
+	kafkaConsumer, kerr := kafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, sender, idem, m)
 	if kerr != nil {
 		cleanup()
 		return nil, fmt.Errorf("bot run: kafka consumer: %w", kerr)
@@ -142,8 +164,34 @@ func attachKafkaConsumer(ctx context.Context, cfg *config.Config, sender kafka.M
 	return cleanup, nil
 }
 
-func newBotHTTPRouter(sender transporthttp.MessageSender) http.Handler {
+func runMetricsServer(ctx context.Context, reg *metrics.Registry, port string) func() {
+	if port == "" {
+		port = "8011"
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", reg.Handler())
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := &http.Server{Addr: ":" + port, Handler: mux}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("run: metrics server error", slog.String("error", err.Error()), slog.String("port", port))
+		}
+	}()
+	slog.Info("run: metrics server started", slog.String("port", port))
+	return func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutCtx)
+	}
+}
+
+func newBotHTTPRouter(sender transporthttp.MessageSender, m *metrics.Bot) http.Handler {
 	r := chi.NewRouter()
+	if m != nil {
+		r.Use(m.RED.Middleware)
+	}
 	r.Get("/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/x-yaml")
 		if _, werr := w.Write(botopenapi.ContractYAML); werr != nil {

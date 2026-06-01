@@ -174,7 +174,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 		FailedSubject:          "f",
 	}
 
-	co, err := NewConsumer(kcfg, ccfg, sender, nil)
+	co, err := NewConsumer(kcfg, ccfg, sender, nil, nil)
 	require.NoError(t, err)
 
 	rctx, cancel := context.WithTimeout(ctx, 120*time.Second)

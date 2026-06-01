@@ -11,6 +11,7 @@ import (
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 )
 
 // maxBackoffShift caps exponential backoff exponent to avoid overflowing time.Duration when shifting.
@@ -25,6 +26,7 @@ type PublisherRepository interface {
 type Publisher struct {
 	repo   PublisherRepository
 	writer *kafkago.Writer
+	m      *metrics.Scrapper
 
 	pollInterval time.Duration
 	batchSize    int
@@ -34,7 +36,7 @@ type Publisher struct {
 	maxBackoff   time.Duration
 }
 
-func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.KafkaProducer, ocfg config.KafkaOutbox) *Publisher {
+func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.KafkaProducer, ocfg config.KafkaOutbox, m *metrics.Scrapper) *Publisher {
 	dialer := &kafkago.Dialer{ClientID: pcfg.ProducerClient}
 	writer := kafkago.NewWriter(kafkago.WriterConfig{
 		Brokers:      kcfg.Brokers,
@@ -46,6 +48,7 @@ func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.Kafka
 	return &Publisher{
 		repo:         repo,
 		writer:       writer,
+		m:            m,
 		pollInterval: ocfg.PollInterval,
 		batchSize:    ocfg.BatchSize,
 		lockFor:      ocfg.LockFor,
@@ -91,11 +94,15 @@ func (p *Publisher) processBatch(ctx context.Context) {
 }
 
 func (p *Publisher) publishOne(ctx context.Context, e domain.OutboxEvent) {
+	start := time.Now()
 	wErr := p.writer.WriteMessages(ctx, kafkago.Message{
 		Topic: e.Topic,
 		Key:   e.Key,
 		Value: e.Payload,
 	})
+	if p.m != nil {
+		p.m.ObserveKafkaWrite(e.Topic, start)
+	}
 	if wErr == nil {
 		if mErr := p.repo.MarkOutboxSent(ctx, e.ID); mErr != nil {
 			slog.Error("outbox-publisher: mark sent",

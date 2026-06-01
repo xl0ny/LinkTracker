@@ -2,6 +2,14 @@
 bot_url: "http://localhost:9999"   # для проверки agent-а, чтобы был fallback на kafka
 port: "8080"
 
+metrics:
+  refresh_interval: "30s"
+  pushgateway:
+    enabled: false
+    url: "http://localhost:9091"
+    job: "scrapper"
+    interval: "15s"
+
 access_type: "SQL" # SQL | ORM
 postgres:
   user: "postgres"

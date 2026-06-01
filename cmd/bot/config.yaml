@@ -1,5 +1,13 @@
 scrapper_url: "http://localhost:8080"
 bot_port: "8081"
+metrics_port: "8011"
+
+metrics:
+  pushgateway:
+    enabled: false
+    url: "http://localhost:9091"
+    job: "bot"
+    interval: "15s"
 
 logging:
   mode: "INFO" # variants ["INFO", "DEBUG"]
