@@ -10,12 +10,19 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 )
 
+type LinkChecker interface {
+	Check(ctx context.Context, link domain.Link) (domain.LinkCheckOutcome, error)
+}
+
 type instrumented struct {
 	inner *Checker
 	m     *metrics.Scrapper
 }
 
-func WithMetrics(c *Checker, m *metrics.Scrapper) *instrumented {
+func WithMetrics(c *Checker, m *metrics.Scrapper) LinkChecker {
+	if c == nil {
+		return nil
+	}
 	return &instrumented{inner: c, m: m}
 }
 
@@ -32,11 +39,11 @@ func externalDomain(raw string) string {
 	if err != nil {
 		return "unknown"
 	}
-	if u.Host == "github.com" {
-		return "github.com"
+	if u.Host == hostGitHub {
+		return hostGitHub
 	}
-	if u.Host == "stackoverflow.com" || strings.HasSuffix(u.Host, ".stackoverflow.com") {
-		return "stackoverflow.com"
+	if u.Host == hostStackOverflow || strings.HasSuffix(u.Host, "."+hostStackOverflow) {
+		return hostStackOverflow
 	}
 	return u.Host
 }

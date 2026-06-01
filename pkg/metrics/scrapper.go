@@ -16,10 +16,10 @@ const (
 )
 
 type Scrapper struct {
-	LinksOnTrack      *prometheus.GaugeVec
-	RequestDuration   *prometheus.HistogramVec
-	APIRequests       *prometheus.CounterVec
-	RED               *RED
+	LinksOnTrack    *prometheus.GaugeVec
+	RequestDuration *prometheus.HistogramVec
+	APIRequests     *prometheus.CounterVec
+	RED             *RED
 }
 
 func NewScrapper(reg *Registry) *Scrapper {

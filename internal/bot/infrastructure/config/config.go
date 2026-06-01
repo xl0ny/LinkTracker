@@ -17,9 +17,9 @@ import (
 type Config struct {
 	TelegramToken string `envconfig:"APP_TELEGRAM_TOKEN" required:"true"`
 
-	ScrapperURL  string `yaml:"scrapper_url"`
-	BotPort      string `yaml:"bot_port"`
-	MetricsPort  string `yaml:"metrics_port"`
+	ScrapperURL string `yaml:"scrapper_url"`
+	BotPort     string `yaml:"bot_port"`
+	MetricsPort string `yaml:"metrics_port"`
 
 	Metrics struct {
 		Pushgateway struct {

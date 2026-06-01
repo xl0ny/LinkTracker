@@ -11,6 +11,11 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/stackoverflow"
 )
 
+const (
+	hostGitHub        = "github.com"
+	hostStackOverflow = "stackoverflow.com"
+)
+
 type Checker struct {
 	github    *github.Client
 	stackover *stackoverflow.Client
@@ -27,13 +32,13 @@ func (c *Checker) Check(ctx context.Context, link domain.Link) (domain.LinkCheck
 	}
 	prev := link.LastUpdated
 	switch {
-	case u.Host == "github.com":
+	case u.Host == hostGitHub:
 		ghOut, ghErr := c.github.CheckLink(ctx, link.URL, prev)
 		if ghErr != nil {
 			return domain.LinkCheckOutcome{}, fmt.Errorf("github check: %w", ghErr)
 		}
 		return ghOut, nil
-	case u.Host == "stackoverflow.com" || strings.HasSuffix(u.Host, ".stackoverflow.com"):
+	case u.Host == hostStackOverflow || strings.HasSuffix(u.Host, "."+hostStackOverflow):
 		soOut, soErr := c.stackover.CheckQuestion(ctx, link.URL, prev)
 		if soErr != nil {
 			return domain.LinkCheckOutcome{}, fmt.Errorf("stackoverflow check: %w", soErr)

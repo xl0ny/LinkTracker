@@ -9,9 +9,11 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 )
 
+const defaultLinksRefreshInterval = 30 * time.Second
+
 func refreshLinksOnTrack(ctx context.Context, repo *metricsrepo.Repository, m *metrics.Scrapper, interval time.Duration) {
 	if interval <= 0 {
-		interval = 30 * time.Second
+		interval = defaultLinksRefreshInterval
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

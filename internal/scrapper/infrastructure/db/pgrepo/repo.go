@@ -438,6 +438,42 @@ func (r *Repository) DeleteTag(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (r *Repository) CountTrackedLinksBySource(ctx context.Context) (map[string]int, error) {
+	const q = `
+SELECT tracked_source, COUNT(*)::int
+FROM (
+	SELECT DISTINCT l.id,
+		CASE
+			WHEN l.url LIKE '%github.com%' THEN 'github'
+			WHEN l.url LIKE '%stackoverflow.com%' THEN 'stackoverflow'
+		END AS tracked_source
+	FROM links l
+	INNER JOIN subscriptions s ON s.link_id = l.id
+) t
+WHERE tracked_source IS NOT NULL
+GROUP BY tracked_source`
+
+	rows, err := r.pool.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("repo: CountTrackedLinksBySource (%w)", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string]int)
+	for rows.Next() {
+		var src string
+		var n int
+		if scanErr := rows.Scan(&src, &n); scanErr != nil {
+			return nil, fmt.Errorf("repo: CountTrackedLinksBySource scan (%w)", scanErr)
+		}
+		out[src] = n
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("repo: CountTrackedLinksBySource rows (%w)", rowsErr)
+	}
+	return out, nil
+}
+
 func (r *Repository) insertLinkTags(ctx context.Context, tx pgx.Tx, subID int64, tagVals []string) error {
 	for _, v := range tagVals {
 		if v == "" {
@@ -518,42 +554,6 @@ func rowToDomainLink(url string, lastUp *time.Time, tags, filters []string) doma
 		l.LastUpdated = *lastUp
 	}
 	return l
-}
-
-func (r *Repository) CountTrackedLinksBySource(ctx context.Context) (map[string]int, error) {
-	const q = `
-SELECT tracked_source, COUNT(*)::int
-FROM (
-	SELECT DISTINCT l.id,
-		CASE
-			WHEN l.url LIKE '%github.com%' THEN 'github'
-			WHEN l.url LIKE '%stackoverflow.com%' THEN 'stackoverflow'
-		END AS tracked_source
-	FROM links l
-	INNER JOIN subscriptions s ON s.link_id = l.id
-) t
-WHERE tracked_source IS NOT NULL
-GROUP BY tracked_source`
-
-	rows, err := r.pool.Query(ctx, q)
-	if err != nil {
-		return nil, fmt.Errorf("repo: CountTrackedLinksBySource (%w)", err)
-	}
-	defer rows.Close()
-
-	out := make(map[string]int)
-	for rows.Next() {
-		var src string
-		var n int
-		if scanErr := rows.Scan(&src, &n); scanErr != nil {
-			return nil, fmt.Errorf("repo: CountTrackedLinksBySource scan (%w)", scanErr)
-		}
-		out[src] = n
-	}
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, fmt.Errorf("repo: CountTrackedLinksBySource rows (%w)", rowsErr)
-	}
-	return out, nil
 }
 
 func newPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {

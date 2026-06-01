@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	kafkago "github.com/segmentio/kafka-go"
@@ -14,5 +15,8 @@ func writeMessages(ctx context.Context, w *kafkago.Writer, m *metrics.Scrapper, 
 	if m != nil {
 		m.ObserveKafkaWrite(topic, start)
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("kafka write messages: %w", err)
+	}
+	return nil
 }

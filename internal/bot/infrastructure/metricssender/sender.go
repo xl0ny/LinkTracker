@@ -1,6 +1,8 @@
 package metricssender
 
 import (
+	"fmt"
+
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 )
 
@@ -22,8 +24,9 @@ func Wrap(inner Sender, m *metrics.Bot) Sender {
 
 func (n *notifying) SendMessage(chatid int64, message string) error {
 	err := n.inner.SendMessage(chatid, message)
-	if err == nil {
-		n.m.SentNotifications.Inc()
+	if err != nil {
+		return fmt.Errorf("send message: %w", err)
 	}
-	return err
+	n.m.SentNotifications.Inc()
+	return nil
 }

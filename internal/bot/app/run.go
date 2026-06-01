@@ -15,7 +15,9 @@ import (
 	botopenapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/command"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/config"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/metricssender"
 	botredis "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/redis"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/scrapperclient"
 	botswagger "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/swagger"
@@ -23,17 +25,48 @@ import (
 	transporthttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/kafka"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/metricssender"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/resilience"
 )
 
-const workerCount = 5
+const (
+	workerCount              = 5
+	metricsShutdownTimeout   = 5 * time.Second
+	defaultMetricsListenPort = "8011"
+)
+
+type botRuntime struct {
+	sender     metricssender.Sender
+	dispatcher *application.Dispatcher
+	actions    <-chan domain.Action
+}
 
 func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	reg, botMetrics := initBotMetrics(ctx, cfg)
+
+	runtime, err := initBotRuntime(ctx, cfg, botMetrics)
+	if err != nil {
+		return err
+	}
+
+	kafkaCleanup, kafkaErr := attachKafkaConsumer(ctx, cfg, runtime.sender, botMetrics)
+	if kafkaErr != nil {
+		return kafkaErr
+	}
+	defer kafkaCleanup()
+
+	startWorkers(runtime)
+
+	metricsCleanup := runMetricsServer(reg, cfg.MetricsPort)
+	defer metricsCleanup()
+
+	return serveBotAPI(ctx, cfg, runtime.sender, botMetrics)
+}
+
+func initBotMetrics(ctx context.Context, cfg *config.Config) (*metrics.Registry, *metrics.Bot) {
 	reg := metrics.New("bot")
 	botMetrics := metrics.NewBot(reg)
 	metrics.StartPusher(ctx, reg, metrics.PushConfig{
@@ -42,26 +75,27 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		Job:      cfg.Metrics.Pushgateway.Job,
 		Interval: cfg.Metrics.Pushgateway.Interval,
 	})
+	return reg, botMetrics
+}
 
+func initBotRuntime(
+	ctx context.Context,
+	cfg *config.Config,
+	botMetrics *metrics.Bot,
+) (*botRuntime, error) {
 	bot, err := telegram.NewBot(cfg.TelegramToken, botMetrics)
 	if err != nil {
 		slog.Error("run: bot initialization error", slog.String("error", err.Error()))
-		return fmt.Errorf("telegram bot: %w", err)
+		return nil, fmt.Errorf("telegram bot: %w", err)
 	}
 	sender := metricssender.Wrap(bot, botMetrics)
 
 	scrapperHTTP := resilience.NewHTTPClient("scrapper", cfg.Resilience)
 	tracker, err := scrapperclient.NewLinkTracker(cfg.ScrapperURL, scrapperHTTP)
 	if err != nil {
-		return fmt.Errorf("app run: Link tracker creation error - %w", err)
+		return nil, fmt.Errorf("app run: Link tracker creation error - %w", err)
 	}
 	tracker = scrapperclient.Track(tracker, botMetrics)
-
-	kafkaCleanup, kafkaErr := attachKafkaConsumer(ctx, cfg, sender, botMetrics)
-	if kafkaErr != nil {
-		return kafkaErr
-	}
-	defer kafkaCleanup()
 
 	stateStore := application.NewTrackStateStore()
 	trackCmd := command.NewTrack(tracker, stateStore)
@@ -71,14 +105,17 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	actions := bot.ReceiveUpdates(ctx)
 	dispatcher := application.NewDispatcher(commands, trackCmd, stateStore, botMetrics)
 
+	return &botRuntime{sender: sender, dispatcher: dispatcher, actions: actions}, nil
+}
+
+func startWorkers(runtime *botRuntime) {
 	for range workerCount {
-		go application.Worker(actions, dispatcher, sender)
+		go application.Worker(runtime.actions, runtime.dispatcher, runtime.sender)
 	}
+}
 
-	metricsCleanup := runMetricsServer(ctx, reg, cfg.MetricsPort)
-	defer metricsCleanup()
-
-	r := newBotHTTPRouter(sender, botMetrics)
+func serveBotAPI(ctx context.Context, cfg *config.Config, sender metricssender.Sender, m *metrics.Bot) error {
+	r := newBotHTTPRouter(sender, m)
 
 	var lc net.ListenConfig
 	ln, errListen := lc.Listen(ctx, "tcp", ":"+cfg.BotPort)
@@ -100,7 +137,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	<-ctx.Done()
 
-	err = srv.Shutdown(context.Background())
+	err := srv.Shutdown(context.Background())
 	if err != nil {
 		slog.Error("run: server graceful shutdown error", slog.String("error", err.Error()))
 	}
@@ -164,9 +201,9 @@ func attachKafkaConsumer(
 	return cleanup, nil
 }
 
-func runMetricsServer(ctx context.Context, reg *metrics.Registry, port string) func() {
+func runMetricsServer(reg *metrics.Registry, port string) func() {
 	if port == "" {
-		port = "8011"
+		port = defaultMetricsListenPort
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", reg.Handler())
@@ -181,7 +218,7 @@ func runMetricsServer(ctx context.Context, reg *metrics.Registry, port string) f
 	}()
 	slog.Info("run: metrics server started", slog.String("port", port))
 	return func() {
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutCtx, cancel := context.WithTimeout(context.Background(), metricsShutdownTimeout)
 		defer cancel()
 		_ = srv.Shutdown(shutCtx)
 	}
