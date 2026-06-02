@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/db/metricsrepo"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
 const defaultLinksRefreshInterval = 30 * time.Second
 
-func refreshLinksOnTrack(ctx context.Context, repo *metricsrepo.Repository, m *metrics.Scrapper, interval time.Duration) {
+func refreshLinksOnTrack(ctx context.Context, repo *metricsrepo.Repository, m *prometrics.Scrapper, interval time.Duration) {
 	if interval <= 0 {
 		interval = defaultLinksRefreshInterval
 	}

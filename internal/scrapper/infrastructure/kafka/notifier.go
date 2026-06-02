@@ -13,7 +13,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/avro/registry"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
 const (
@@ -27,10 +27,10 @@ type Notifier struct {
 	failedWriter *kafkago.Writer
 	rawEnc       *registry.SingleEncoder
 	failedEnc    *registry.SingleEncoder
-	metrics      *metrics.Scrapper
+	metrics      *prometrics.Scrapper
 }
 
-func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.KafkaProducer, m *metrics.Scrapper) (*Notifier, error) {
+func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.KafkaProducer, m *prometrics.Scrapper) (*Notifier, error) {
 	if kconfig.SchemaRegistryURL == "" {
 		return nil, errors.New("kafka-notifier: schema_registry_url required")
 	}

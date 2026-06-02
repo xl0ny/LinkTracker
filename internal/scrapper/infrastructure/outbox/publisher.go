@@ -11,7 +11,7 @@ import (
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
 // maxBackoffShift caps exponential backoff exponent to avoid overflowing time.Duration when shifting.
@@ -26,7 +26,7 @@ type PublisherRepository interface {
 type Publisher struct {
 	repo   PublisherRepository
 	writer *kafkago.Writer
-	m      *metrics.Scrapper
+	m      *prometrics.Scrapper
 
 	pollInterval time.Duration
 	batchSize    int
@@ -36,7 +36,7 @@ type Publisher struct {
 	maxBackoff   time.Duration
 }
 
-func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.KafkaProducer, ocfg config.KafkaOutbox, m *metrics.Scrapper) *Publisher {
+func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.KafkaProducer, ocfg config.KafkaOutbox, m *prometrics.Scrapper) *Publisher {
 	dialer := &kafkago.Dialer{ClientID: pcfg.ProducerClient}
 	writer := kafkago.NewWriter(kafkago.WriterConfig{
 		Brokers:      kcfg.Brokers,

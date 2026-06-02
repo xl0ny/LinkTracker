@@ -3,7 +3,7 @@ package metricssender
 import (
 	"fmt"
 
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
 type Sender interface {
@@ -12,10 +12,10 @@ type Sender interface {
 
 type notifying struct {
 	inner Sender
-	m     *metrics.Bot
+	m     *prometrics.Bot
 }
 
-func Wrap(inner Sender, m *metrics.Bot) Sender {
+func Wrap(inner Sender, m *prometrics.Bot) Sender {
 	if m == nil {
 		return inner
 	}

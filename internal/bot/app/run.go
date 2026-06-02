@@ -25,7 +25,7 @@ import (
 	transporthttp "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http"
 	botapi "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/http/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/kafka"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/resilience"
 )
 
@@ -66,10 +66,10 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	return serveBotAPI(ctx, cfg, runtime.sender, botMetrics)
 }
 
-func initBotMetrics(ctx context.Context, cfg *config.Config) (*metrics.Registry, *metrics.Bot) {
-	reg := metrics.New("bot")
-	botMetrics := metrics.NewBot(reg)
-	metrics.StartPusher(ctx, reg, metrics.PushConfig{
+func initBotMetrics(ctx context.Context, cfg *config.Config) (*prometrics.Registry, *prometrics.Bot) {
+	reg := prometrics.New("bot")
+	botMetrics := prometrics.NewBot(reg)
+	prometrics.StartPusher(ctx, reg, prometrics.PushConfig{
 		Enabled:  cfg.Metrics.Pushgateway.Enabled,
 		URL:      cfg.Metrics.Pushgateway.URL,
 		Job:      cfg.Metrics.Pushgateway.Job,
@@ -81,7 +81,7 @@ func initBotMetrics(ctx context.Context, cfg *config.Config) (*metrics.Registry,
 func initBotRuntime(
 	ctx context.Context,
 	cfg *config.Config,
-	botMetrics *metrics.Bot,
+	botMetrics *prometrics.Bot,
 ) (*botRuntime, error) {
 	bot, err := telegram.NewBot(cfg.TelegramToken, botMetrics)
 	if err != nil {
@@ -114,7 +114,7 @@ func startWorkers(runtime *botRuntime) {
 	}
 }
 
-func serveBotAPI(ctx context.Context, cfg *config.Config, sender metricssender.Sender, m *metrics.Bot) error {
+func serveBotAPI(ctx context.Context, cfg *config.Config, sender metricssender.Sender, m *prometrics.Bot) error {
 	r := newBotHTTPRouter(sender, m)
 
 	var lc net.ListenConfig
@@ -150,7 +150,7 @@ func attachKafkaConsumer(
 	ctx context.Context,
 	cfg *config.Config,
 	sender kafka.MessageSender,
-	m *metrics.Bot,
+	m *prometrics.Bot,
 ) (cleanup func(), err error) {
 	cleanup = func() {}
 	if !cfg.Kafka.Kafka.Enabled {
@@ -201,7 +201,7 @@ func attachKafkaConsumer(
 	return cleanup, nil
 }
 
-func runMetricsServer(reg *metrics.Registry, port string) func() {
+func runMetricsServer(reg *prometrics.Registry, port string) func() {
 	if port == "" {
 		port = defaultMetricsListenPort
 	}
@@ -224,7 +224,7 @@ func runMetricsServer(reg *metrics.Registry, port string) func() {
 	}
 }
 
-func newBotHTTPRouter(sender transporthttp.MessageSender, m *metrics.Bot) http.Handler {
+func newBotHTTPRouter(sender transporthttp.MessageSender, m *prometrics.Bot) http.Handler {
 	r := chi.NewRouter()
 	if m != nil {
 		r.Use(m.RED.Middleware)

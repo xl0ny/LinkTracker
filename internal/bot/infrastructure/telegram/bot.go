@@ -8,18 +8,18 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
 const actionBuf = 100
 
 type bot struct {
 	api     *tgbotapi.BotAPI
-	metrics *metrics.Bot
+	metrics *prometrics.Bot
 }
 
 //revive:disable-next-line:unexported-return returning *bot is intentional (internal impl)
-func NewBot(telegramToken string, m *metrics.Bot) (*bot, error) {
+func NewBot(telegramToken string, m *prometrics.Bot) (*bot, error) {
 	api, err := tgbotapi.NewBotAPI(telegramToken)
 	if err != nil {
 		return nil, fmt.Errorf("bot: initialization error - %w", err)

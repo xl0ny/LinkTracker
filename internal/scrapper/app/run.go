@@ -29,7 +29,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/valkey"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/api"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/transport/http/handler"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/resilience"
 )
 
@@ -53,9 +53,9 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	reg := metrics.New("scrapper")
-	scrapperMetrics := metrics.NewScrapper(reg)
-	metrics.StartPusher(ctx, reg, metrics.PushConfig{
+	reg := prometrics.New("scrapper")
+	scrapperMetrics := prometrics.NewScrapper(reg)
+	prometrics.StartPusher(ctx, reg, prometrics.PushConfig{
 		Enabled:  cfg.Metrics.Pushgateway.Enabled,
 		URL:      cfg.Metrics.Pushgateway.URL,
 		Job:      cfg.Metrics.Pushgateway.Job,
@@ -187,7 +187,7 @@ func buildNotifier(
 	repo Repository,
 	botAPI *botclient.ClientWithResponses,
 	cfg *config.Config,
-	m *metrics.Scrapper,
+	m *prometrics.Scrapper,
 ) (application.BotNotifier, *outbox.Publisher, error) {
 	primary := botclient.NewNotifier(botAPI)
 	if !cfg.Kafka.Kafka.Enabled {

@@ -12,11 +12,11 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/notifier"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
-func testScrapperMetrics() *metrics.Scrapper {
-	return metrics.NewScrapper(metrics.New("test"))
+func testScrapperMetrics() *prometrics.Scrapper {
+	return prometrics.NewScrapper(prometrics.New("test"))
 }
 
 func TestBuildNotifier_kafkaDisabledUsesHTTPNotifier(t *testing.T) {

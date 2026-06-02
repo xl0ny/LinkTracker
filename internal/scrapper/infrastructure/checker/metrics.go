@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
 type LinkChecker interface {
@@ -16,10 +16,10 @@ type LinkChecker interface {
 
 type instrumented struct {
 	inner *Checker
-	m     *metrics.Scrapper
+	m     *prometrics.Scrapper
 }
 
-func WithMetrics(c *Checker, m *metrics.Scrapper) LinkChecker {
+func WithMetrics(c *Checker, m *prometrics.Scrapper) LinkChecker {
 	if c == nil {
 		return nil
 	}
@@ -30,7 +30,7 @@ func (c *instrumented) Check(ctx context.Context, link domain.Link) (domain.Link
 	scopeType := externalDomain(link.URL)
 	start := time.Now()
 	out, err := c.inner.Check(ctx, link)
-	metrics.ObserveDuration(c.m.RequestDuration, metrics.ScopeExternalSource, scopeType, start)
+	prometrics.ObserveDuration(c.m.RequestDuration, prometrics.ScopeExternalSource, scopeType, start)
 	return out, err
 }
 

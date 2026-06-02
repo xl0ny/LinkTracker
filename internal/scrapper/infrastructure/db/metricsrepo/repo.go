@@ -7,7 +7,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/outbox"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
 type LinkCounter interface {
@@ -24,10 +24,10 @@ type inner interface {
 
 type Repository struct {
 	inner inner
-	m     *metrics.Scrapper
+	m     *prometrics.Scrapper
 }
 
-func Wrap(r inner, m *metrics.Scrapper) *Repository {
+func Wrap(r inner, m *prometrics.Scrapper) *Repository {
 	return &Repository{inner: r, m: m}
 }
 
@@ -168,23 +168,23 @@ func (r *Repository) WithTx(ctx context.Context, fn func(ctx context.Context) er
 	})
 }
 
-func timedErr(m *metrics.Scrapper, table string, fn func() error) error {
+func timedErr(m *prometrics.Scrapper, table string, fn func() error) error {
 	start := time.Now()
 	err := fn()
-	metrics.ObserveDuration(m.RequestDuration, metrics.ScopeDatabase, table, start)
+	prometrics.ObserveDuration(m.RequestDuration, prometrics.ScopeDatabase, table, start)
 	return err
 }
 
-func timedVal[T any](m *metrics.Scrapper, table string, fn func() (T, error)) (T, error) {
+func timedVal[T any](m *prometrics.Scrapper, table string, fn func() (T, error)) (T, error) {
 	start := time.Now()
 	v, err := fn()
-	metrics.ObserveDuration(m.RequestDuration, metrics.ScopeDatabase, table, start)
+	prometrics.ObserveDuration(m.RequestDuration, prometrics.ScopeDatabase, table, start)
 	return v, err
 }
 
-func timedMap(m *metrics.Scrapper, table string, fn func() (map[string]int, error)) (map[string]int, error) {
+func timedMap(m *prometrics.Scrapper, table string, fn func() (map[string]int, error)) (map[string]int, error) {
 	start := time.Now()
 	v, err := fn()
-	metrics.ObserveDuration(m.RequestDuration, metrics.ScopeDatabase, table, start)
+	prometrics.ObserveDuration(m.RequestDuration, prometrics.ScopeDatabase, table, start)
 	return v, err
 }

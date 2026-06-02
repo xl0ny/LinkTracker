@@ -13,7 +13,7 @@ import (
 	kafkago "github.com/segmentio/kafka-go"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/avro/registry"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
-	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/metrics"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
 type MessageSender interface {
@@ -38,7 +38,7 @@ type Consumer struct {
 
 	processedTopic string
 	failedTopic    string
-	metrics        *metrics.Bot
+	metrics        *prometrics.Bot
 }
 
 const topicReaderGoroutines = 2
@@ -48,7 +48,7 @@ func NewConsumer(
 	cconfig config.KafkaConsumer,
 	sender MessageSender,
 	idem IdempotencyStore,
-	m *metrics.Bot,
+	m *prometrics.Bot,
 ) (*Consumer, error) {
 	if kconfig.SchemaRegistryURL == "" {
 		return nil, errors.New("kafka-consumer: schema_registry_url required")
@@ -292,7 +292,7 @@ func (c *Consumer) deliverUpdate(ctx context.Context, record map[string]any) err
 	start := time.Now()
 	defer func() {
 		if c.metrics != nil {
-			metrics.ObserveDuration(c.metrics.CommandDuration, metrics.ScopeScrapperAsync, c.processedTopic, start)
+			prometrics.ObserveDuration(c.metrics.CommandDuration, prometrics.ScopeScrapperAsync, c.processedTopic, start)
 		}
 	}()
 	first, err := c.acquireEvent(ctx, record)
@@ -316,7 +316,7 @@ func (c *Consumer) deliverFailed(ctx context.Context, chatID int64, record map[s
 	start := time.Now()
 	defer func() {
 		if c.metrics != nil {
-			metrics.ObserveDuration(c.metrics.CommandDuration, metrics.ScopeScrapperAsync, c.failedTopic, start)
+			prometrics.ObserveDuration(c.metrics.CommandDuration, prometrics.ScopeScrapperAsync, c.failedTopic, start)
 		}
 	}()
 	first, err := c.acquireEvent(ctx, record)
