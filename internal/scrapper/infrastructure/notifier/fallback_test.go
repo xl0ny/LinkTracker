@@ -1,4 +1,4 @@
-package notifier
+package notifier_test
 
 import (
 	"context"
@@ -6,42 +6,38 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application/mocks"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/notifier"
 )
 
-type stubNotifier struct {
-	notifyErr       error
-	notifyFailedErr error
-	called          string
-}
-
-func (s *stubNotifier) Notify(_ context.Context, _ int64, _ domain.Link, _ string) error {
-	s.called = "notify"
-	return s.notifyErr
-}
-
-func (s *stubNotifier) NotifyFailedLinks(_ context.Context, _ int64, _ []string) error {
-	s.called = "failed"
-	return s.notifyFailedErr
-}
-
 func TestFallback_httpDownUsesKafka(t *testing.T) {
-	primary := &stubNotifier{notifyErr: errors.New("http down")}
-	fallback := &stubNotifier{}
-	fb := NewFallback(primary, fallback)
+	ctrl := gomock.NewController(t)
+	primary := mocks.NewMockBotNotifier(ctrl)
+	fallback := mocks.NewMockBotNotifier(ctrl)
 
-	err := fb.Notify(context.Background(), 1, domain.Link{URL: "https://example.com"}, "x")
+	link := domain.Link{URL: "https://example.com"}
+	primary.EXPECT().Notify(gomock.Any(), int64(1), link, "x").Return(errors.New("http down"))
+	fallback.EXPECT().Notify(gomock.Any(), int64(1), link, "x").Return(nil)
+
+	fb := notifier.NewFallback(primary, fallback)
+	err := fb.Notify(context.Background(), 1, link, "x")
 	require.NoError(t, err)
-	require.Equal(t, "notify", fallback.called)
 }
 
 func TestFallback_bothFailReturnsError(t *testing.T) {
-	primary := &stubNotifier{notifyErr: errors.New("http down")}
-	fallback := &stubNotifier{notifyErr: errors.New("kafka down")}
-	fb := NewFallback(primary, fallback)
+	ctrl := gomock.NewController(t)
+	primary := mocks.NewMockBotNotifier(ctrl)
+	fallback := mocks.NewMockBotNotifier(ctrl)
 
-	err := fb.Notify(context.Background(), 1, domain.Link{URL: "https://example.com"}, "x")
+	link := domain.Link{URL: "https://example.com"}
+	primary.EXPECT().Notify(gomock.Any(), int64(1), link, "x").Return(errors.New("http down"))
+	fallback.EXPECT().Notify(gomock.Any(), int64(1), link, "x").Return(errors.New("kafka down"))
+
+	fb := notifier.NewFallback(primary, fallback)
+	err := fb.Notify(context.Background(), 1, link, "x")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "http down")
 	require.Contains(t, err.Error(), "kafka down")
