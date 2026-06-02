@@ -5,8 +5,7 @@
 //
 //	mockgen -destination=mocks/mocks.go -package=mocks . ChatUseCase,LinksCache,SchedulerLinks,BotNotifier,LinkChecker
 //
-
-// Package mocks is a generated GoMock package.
+//nolint:all // Сгенерировано mockgen; правки только через go generate в cached_chat.go.
 package mocks
 
 import (

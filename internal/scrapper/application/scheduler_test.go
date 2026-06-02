@@ -37,7 +37,7 @@ func expectChecker(
 	changedByURL map[string]bool,
 	errByURL map[string]error,
 	notifyAtCount map[int]chan struct{},
-) *atomic.Int32 {
+) {
 	var calls atomic.Int32
 	checker.EXPECT().Check(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, link domain.Link) (domain.LinkCheckOutcome, error) {
@@ -61,7 +61,6 @@ func expectChecker(
 			}, nil
 		},
 	).AnyTimes()
-	return &calls
 }
 
 func TestScheduler_Run_StartsWorkersOnce(t *testing.T) {

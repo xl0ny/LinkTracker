@@ -44,6 +44,7 @@ var (
 	_ Repository = (*orm.Repository)(nil)
 )
 
+//nolint:funlen // Точка сборки scrapper все намеренно в одной функции.
 func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
