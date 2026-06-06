@@ -44,6 +44,7 @@ var (
 	_ Repository = (*orm.Repository)(nil)
 )
 
+//nolint:funlen // Точка сборки scrapper все намеренно в одной функции.
 func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -54,11 +55,28 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	}
 	defer repo.Close()
 
-	uc, closeCache, err := buildUseCase(ctx, repo, cfg)
-	if err != nil {
-		return err
+	baseUC := application.NewChatUC(repo, repo)
+	var uc handler.UseCase = baseUC
+	if cfg.Valkey.Enabled {
+		cache, cacheErr := valkey.New(ctx, valkey.Config{
+			Addrs:       cfg.Valkey.Addrs,
+			Password:    cfg.Valkey.Password,
+			KeyPrefix:   cfg.Valkey.KeyPrefix,
+			TTL:         cfg.Valkey.TTL,
+			ClientCache: cfg.Valkey.ClientCache.Enabled,
+			CSCTTL:      cfg.Valkey.ClientCache.TTL,
+		})
+		if cacheErr != nil {
+			return fmt.Errorf("scrapper: valkey cache init: %w", cacheErr)
+		}
+		defer cache.Close()
+		slog.Info("scrapper run: valkey cache enabled",
+			slog.Bool("client_cache", cfg.Valkey.ClientCache.Enabled),
+			slog.Int("addrs", len(cfg.Valkey.Addrs)))
+		uc = application.NewCachedChatUC(baseUC, cache)
+	} else {
+		slog.Info("scrapper run: valkey cache disabled")
 	}
-	defer closeCache()
 
 	h := handler.NewHandler(uc)
 	r := chi.NewRouter()
@@ -137,29 +155,6 @@ func mountSwagger(r chi.Router) {
 			slog.Error("scrapper run: swagger html write error", slog.String("error", werr.Error()))
 		}
 	})
-}
-
-func buildUseCase(ctx context.Context, repo Repository, cfg *config.Config) (handler.UseCase, func(), error) {
-	base := application.NewChatUC(repo, repo)
-	if !cfg.Valkey.Enabled {
-		slog.Info("scrapper run: valkey cache disabled")
-		return base, func() {}, nil
-	}
-	cache, err := valkey.New(ctx, valkey.Config{
-		Addrs:       cfg.Valkey.Addrs,
-		Password:    cfg.Valkey.Password,
-		KeyPrefix:   cfg.Valkey.KeyPrefix,
-		TTL:         cfg.Valkey.TTL,
-		ClientCache: cfg.Valkey.ClientCache.Enabled,
-		CSCTTL:      cfg.Valkey.ClientCache.TTL,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("scrapper: valkey cache init: %w", err)
-	}
-	slog.Info("scrapper run: valkey cache enabled",
-		slog.Bool("client_cache", cfg.Valkey.ClientCache.Enabled),
-		slog.Int("addrs", len(cfg.Valkey.Addrs)))
-	return application.NewCachedChatUC(base, cache), cache.Close, nil
 }
 
 func buildNotifier(ctx context.Context, repo Repository, botAPI *botclient.ClientWithResponses, cfg *config.Config) (application.BotNotifier, *outbox.Publisher, error) {

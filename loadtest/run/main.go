@@ -29,12 +29,12 @@ const (
 )
 
 const (
-	reportFilePerms    = 0o644
-	p50Percent         = 50
-	p99Percent         = 99
-	hundredPercent     = 100
-	httpClientErrCodes = 4
-	httpServerErrCodes = 5
+	reportFilePerms          = 0o644
+	p50Percent               = 50
+	p99Percent               = 99
+	hundredPercent           = 100
+	httpStatusClientErrorMin = 400
+	httpStatusServerErrorMin = 500
 )
 
 func (k opKind) String() string {
@@ -313,10 +313,10 @@ func classifyStatuses(status map[int]int) (c4xx, c5xx, other int) {
 	for code, n := range status {
 		switch {
 		case code == http.StatusOK:
-		case code/100 == httpClientErrCodes:
-			c4xx += n
-		case code/100 == httpServerErrCodes:
+		case code >= httpStatusServerErrorMin:
 			c5xx += n
+		case code >= httpStatusClientErrorMin:
+			c4xx += n
 		default:
 			other += n
 		}
