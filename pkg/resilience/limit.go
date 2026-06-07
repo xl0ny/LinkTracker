@@ -10,7 +10,7 @@ import (
 )
 
 func RateLimitMiddleware(cfg RateLimitConfig) func(http.Handler) http.Handler {
-	if cfg.RPS <= 0 {
+	if cfg.RPS < 0 {
 		return func(next http.Handler) http.Handler { return next }
 	}
 	burst := cfg.Burst

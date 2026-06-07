@@ -33,14 +33,16 @@ type Config struct {
 
 	Resilience resilience.Config `yaml:"resilience"`
 
-	Redis struct {
-		Enabled   bool          `yaml:"enabled"`
-		Addr      string        `yaml:"addr"`
-		Password  string        `envconfig:"REDIS_PASSWORD"`
-		DB        int           `yaml:"db"`
-		KeyPrefix string        `yaml:"key_prefix"`
-		TTL       time.Duration `yaml:"ttl"`
-	} `yaml:"redis"`
+	Redis RedisSettings `yaml:"redis"`
+}
+
+type RedisSettings struct {
+	Enabled   bool          `yaml:"enabled"`
+	Addr      string        `yaml:"addr"`
+	Password  string        `envconfig:"REDIS_PASSWORD"`
+	DB        int           `yaml:"db"`
+	KeyPrefix string        `yaml:"key_prefix"`
+	TTL       time.Duration `yaml:"ttl"`
 }
 
 func (c *Config) GetLevel() slog.Level {

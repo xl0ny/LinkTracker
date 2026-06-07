@@ -36,10 +36,10 @@ type Publisher struct {
 
 func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.KafkaProducer, ocfg config.KafkaOutbox) *Publisher {
 	dialer := &kafkago.Dialer{ClientID: pcfg.ProducerClient}
-	newWriter := func(topic config.KafkaTopic) *kafkago.Writer {
+	newWriter := func(topic string) *kafkago.Writer {
 		return kafkago.NewWriter(kafkago.WriterConfig{
-			Brokers:      topic.Brokers,
-			Topic:        topic.Topic,
+			Brokers:      kcfg.Brokers,
+			Topic:        topic,
 			WriteTimeout: pcfg.WriteTimeout,
 			RequiredAcks: pcfg.RequiredACK,
 			MaxAttempts:  pcfg.MaxAttempts,
@@ -49,8 +49,8 @@ func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.Kafka
 	return &Publisher{
 		repo: repo,
 		writers: map[string]*kafkago.Writer{
-			kcfg.LinkUpdates.Topic: newWriter(kcfg.LinkUpdates),
-			kcfg.FailedLinks.Topic: newWriter(kcfg.FailedLinks),
+			kcfg.RawUpdatesTopic:  newWriter(kcfg.RawUpdatesTopic),
+			kcfg.FailedLinksTopic: newWriter(kcfg.FailedLinksTopic),
 		},
 		pollInterval: ocfg.PollInterval,
 		batchSize:    ocfg.BatchSize,

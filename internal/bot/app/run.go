@@ -100,13 +100,7 @@ func attachKafkaConsumer(ctx context.Context, cfg *config.Config, sender kafka.M
 
 	var idem kafka.IdempotencyStore
 	if cfg.Redis.Enabled {
-		redisStore := botredis.New(botredis.Config{
-			Addr:      cfg.Redis.Addr,
-			Password:  cfg.Redis.Password,
-			DB:        cfg.Redis.DB,
-			KeyPrefix: cfg.Redis.KeyPrefix,
-			TTL:       cfg.Redis.TTL,
-		})
+		redisStore := botredis.New(cfg.Redis)
 		if perr := redisStore.Ping(ctx); perr != nil {
 			return nil, fmt.Errorf("bot run: redis ping: %w", perr)
 		}

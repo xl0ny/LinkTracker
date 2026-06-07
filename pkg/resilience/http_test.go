@@ -187,6 +187,23 @@ func TestHTTP_exponentialBackoffMaxDelay(t *testing.T) {
 	}
 }
 
+func TestRateLimit_disabledWhenNegative(t *testing.T) {
+	mw := RateLimitMiddleware(RateLimitConfig{RPS: -1, Burst: -1})
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	client := &http.Client{Timeout: time.Second}
+	for range 5 {
+		resp, err := client.Get(srv.URL)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		_ = resp.Body.Close()
+	}
+}
+
 func TestRateLimit_exceedsLimit(t *testing.T) {
 	cfg := RateLimitConfig{RPS: 2, Burst: 2}
 	mw := RateLimitMiddleware(cfg)

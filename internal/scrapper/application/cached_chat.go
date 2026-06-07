@@ -1,3 +1,4 @@
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mocks.go -package=mocks . ChatUseCase,LinksCache,SchedulerLinks,BotNotifier,LinkChecker
 package application
 
 import (
@@ -56,16 +57,18 @@ func (uc *CachedChatUC) LinkAddment(ctx context.Context, chatID int64, link stri
 }
 
 func (uc *CachedChatUC) GetLinks(ctx context.Context, chatID int64) ([]domain.Link, error) {
-	if links, ok, err := uc.cache.Get(ctx, chatID); err != nil {
+	links, ok, err := uc.cache.Get(ctx, chatID)
+	if err != nil {
 		slog.Warn("application: GetLinks: cache get failed, falling back to source",
 			slog.Int64("chat_id", chatID),
 			slog.String("error", err.Error()))
-	} else if ok {
+	}
+	if ok {
 		slog.Debug("application: GetLinks: cache hit", slog.Int64("chat_id", chatID))
 		return links, nil
 	}
 
-	links, err := uc.inner.GetLinks(ctx, chatID)
+	links, err = uc.inner.GetLinks(ctx, chatID)
 	if err != nil {
 		return nil, fmt.Errorf("cached chat: get links: %w", err)
 	}
