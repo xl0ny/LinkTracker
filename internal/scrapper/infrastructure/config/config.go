@@ -42,13 +42,7 @@ type Config struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 
-	Kafka struct {
-		config.Kafka `yaml:",inline"`
-		Producer     struct {
-			config.KafkaProducer `yaml:",inline"`
-			Outbox               config.KafkaOutbox `yaml:"outbox"`
-		} `yaml:"producer"`
-	} `yaml:"kafka"`
+	Kafka KafkaSettings `yaml:"kafka"`
 
 	Resilience resilience.Config `yaml:"resilience"`
 
@@ -63,6 +57,14 @@ type Config struct {
 			TTL     time.Duration `yaml:"ttl"`
 		} `yaml:"client_cache"`
 	} `yaml:"valkey"`
+}
+
+type KafkaSettings struct {
+	Cluster  config.Kafka `yaml:",inline"`
+	Producer struct {
+		config.KafkaProducer `yaml:",inline"`
+		Outbox               config.KafkaOutbox `yaml:"outbox"`
+	} `yaml:"producer"`
 }
 
 func (c *Config) GetLevel() slog.Level {
