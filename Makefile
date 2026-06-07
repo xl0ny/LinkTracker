@@ -134,7 +134,7 @@ compose-db:
 compose-migrate:
 	@docker compose --profile migrate run --rm migrator
 
-KAFKA_BROKERS := kafka-1 kafka-2 kafka-3
+KAFKA_BROKERS := kafka-broker-1 kafka-broker-2 kafka-broker-3
 BROKER ?= 1
 
 .PHONY: compose-kafka
@@ -150,8 +150,8 @@ compose-kafka-up:
 
 .PHONY: compose-kafka-broker
 compose-kafka-broker:
-	@echo "Starting kafka-$(BROKER)"
-	@docker compose up -d kafka-$(BROKER)
+	@echo "Starting kafka-broker-$(BROKER)"
+	@docker compose up -d kafka-broker-$(BROKER)
 
 .PHONY: compose-kafka-init
 compose-kafka-init:
@@ -182,7 +182,7 @@ compose-kafka-logs:
 
 .PHONY: compose-kafka-topics
 compose-kafka-topics:
-	@docker compose exec kafka-1 kafka-topics --bootstrap-server kafka-1:9094 --list
+	@docker compose exec kafka-broker-1 kafka-topics --bootstrap-server kafka-broker-1:9094 --list
 
 .PHONY: run-gorm-models-generation
 run-gorm-models-generation:

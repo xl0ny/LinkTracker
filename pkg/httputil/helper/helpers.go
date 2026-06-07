@@ -3,6 +3,7 @@ package helper
 import (
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
 )
 
@@ -34,3 +35,7 @@ func WriteError(w http.ResponseWriter, code int, slogname, codename, desc, excpn
 }
 
 func Ptr[T any](v T) *T { return &v }
+
+func ListenAddress(port string) string {
+	return net.JoinHostPort("", port)
+}

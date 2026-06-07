@@ -6,7 +6,11 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+	botcfg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/infrastructure/config"
 )
+
+// idempotencyClaimed просто метка того, что ключ eventID уже обработан.
+const idempotencyClaimed = true
 
 type Idempotency struct {
 	client    *goredis.Client
@@ -14,24 +18,14 @@ type Idempotency struct {
 	ttl       time.Duration
 }
 
-type Config struct {
-	Addr      string
-	Password  string
-	DB        int
-	KeyPrefix string
-	TTL       time.Duration
-}
-
-func New(cfg Config) *Idempotency {
-	prefix := cfg.KeyPrefix
-
+func New(cfg botcfg.RedisSettings) *Idempotency {
 	client := goredis.NewClient(&goredis.Options{
 		Addr:     cfg.Addr,
 		Password: cfg.Password,
 		DB:       cfg.DB,
 	})
 
-	return &Idempotency{client: client, keyPrefix: prefix, ttl: cfg.TTL}
+	return &Idempotency{client: client, keyPrefix: cfg.KeyPrefix, ttl: cfg.TTL}
 }
 
 func (i *Idempotency) Ping(ctx context.Context) error {
@@ -48,11 +42,12 @@ func (i *Idempotency) Close() error {
 	return nil
 }
 
+// Acquire помечает eventID как обработанный в Redis.
 func (i *Idempotency) Acquire(ctx context.Context, eventID string) (bool, error) {
 	if eventID == "" {
 		return true, nil
 	}
-	ok, err := i.client.SetNX(ctx, i.keyPrefix+eventID, "1", i.ttl).Result()
+	ok, err := i.client.SetNX(ctx, i.keyPrefix+eventID, idempotencyClaimed, i.ttl).Result()
 	if err != nil {
 		return false, fmt.Errorf("bot-redis: setnx: %w", err)
 	}

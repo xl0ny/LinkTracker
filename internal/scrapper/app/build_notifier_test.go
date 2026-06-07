@@ -21,7 +21,7 @@ func TestBuildNotifier_kafkaDisabledUsesHTTPNotifier(t *testing.T) {
 	require.NoError(t, err)
 
 	var cfg config.Config
-	cfg.Kafka.Kafka.Enabled = false
+	cfg.Kafka.Cluster.Enabled = false
 
 	n, p, err := buildNotifier(context.Background(), nil, api, &cfg)
 	require.NoError(t, err)

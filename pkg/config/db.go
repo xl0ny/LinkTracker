@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -29,14 +28,6 @@ func GetConfig() (*DB, error) {
 	if envErr := envconfig.Process("", &config); envErr != nil {
 		return nil, fmt.Errorf("migrator: env config: %w", envErr)
 	}
-	if config.PostgresUser == "" ||
-		config.PostgresPassword == "" ||
-		config.PostgresDB == "" ||
-		config.PostgresHost == "" ||
-		config.PostgresPort == "" ||
-		config.PostgresSSLMode == "" {
-		return nil, errors.New("migrator: invalid config: postgres fields must be set via yaml or env")
-	}
 	return &config, nil
 }
 
@@ -46,12 +37,12 @@ type DB struct {
 		Direction string `yaml:"direction"`
 		Steps     int    `yaml:"steps"`
 	} `yaml:"migrations"`
-	PostgresUser     string `yaml:"postgres_user" envconfig:"POSTGRES_USER"`
+	PostgresUser     string `yaml:"postgres_user" envconfig:"POSTGRES_USER" default:"postgres"`
 	PostgresPassword string `envconfig:"POSTGRES_PASSWORD"`
-	PostgresDB       string `yaml:"postgres_db" envconfig:"POSTGRES_DB"`
-	PostgresHost     string `yaml:"postgres_host" envconfig:"POSTGRES_HOST"`
-	PostgresPort     string `yaml:"postgres_port" envconfig:"POSTGRES_PORT"`
-	PostgresSSLMode  string `yaml:"postgres_ssl_mode" envconfig:"POSTGRES_SSL_MODE"`
+	PostgresDB       string `yaml:"postgres_db" envconfig:"POSTGRES_DB" default:"linktracker"`
+	PostgresHost     string `yaml:"postgres_host" envconfig:"POSTGRES_HOST" default:"localhost"`
+	PostgresPort     string `yaml:"postgres_port" envconfig:"POSTGRES_PORT" default:"5432"`
+	PostgresSSLMode  string `yaml:"postgres_ssl_mode" envconfig:"POSTGRES_SSL_MODE" default:"disable"`
 }
 
 func BuildPostgresDSN(user, pass, host, port, db, sslmode string) string {

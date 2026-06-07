@@ -23,18 +23,18 @@ func (r *Repository) executor(ctx context.Context) dbExecutor {
 	return r.pool
 }
 
-func (r *Repository) WithTx(ctx context.Context, fn func(ctx context.Context) error) error {
+func (r *Repository) Do(ctx context.Context, fn func(ctx context.Context) error) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("repo: WithTx begin (%w)", err)
+		return fmt.Errorf("repo: Do begin (%w)", err)
 	}
-	defer rollbackUnlessCommitted(ctx, tx)
+	defer tx.Rollback(ctx) //nolint:errcheck // abort on error; ErrTxClosed after Commit is expected in defer
 
 	if fnErr := fn(context.WithValue(ctx, txKey{}, tx)); fnErr != nil {
 		return fnErr
 	}
 	if commitErr := tx.Commit(ctx); commitErr != nil {
-		return fmt.Errorf("repo: WithTx commit (%w)", commitErr)
+		return fmt.Errorf("repo: Do commit (%w)", commitErr)
 	}
 	return nil
 }
