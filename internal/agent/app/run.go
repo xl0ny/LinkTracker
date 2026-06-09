@@ -44,7 +44,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	})
 	processor := application.NewProcessor(filter, sum, cfg.AIAgent.Summarization.Threshold, prioritizer)
 
-	_, consumer, closeKafka, err := buildKafkaPipeline(ctx, cfg, processor)
+	consumer, closeKafka, err := buildKafkaPipeline(ctx, cfg, processor)
 	if err != nil {
 		return err
 	}
@@ -88,10 +88,10 @@ func buildKafkaPipeline(
 	ctx context.Context,
 	cfg *config.Config,
 	processor agentkafka.Processor,
-) (*application.Grouper, *agentkafka.Consumer, func(), error) {
+) (*agentkafka.Consumer, func(), error) {
 	producer, err := agentkafka.NewProducer(ctx, cfg.Kafka.Cluster, cfg.Kafka.Producer.KafkaProducer)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("agent run: producer: %w", err)
+		return nil, nil, fmt.Errorf("agent run: producer: %w", err)
 	}
 
 	windowMs := cfg.AIAgent.Grouping.WindowMs
@@ -103,7 +103,7 @@ func buildKafkaPipeline(
 	consumer, err := agentkafka.NewConsumer(cfg.Kafka.Cluster, cfg.Kafka.Consumer.KafkaConsumer, processor, grouper)
 	if err != nil {
 		_ = producer.Close()
-		return nil, nil, nil, fmt.Errorf("agent run: consumer: %w", err)
+		return nil, nil, fmt.Errorf("agent run: consumer: %w", err)
 	}
 
 	closeFn := func() {
@@ -114,7 +114,7 @@ func buildKafkaPipeline(
 			slog.Error("agent run: producer close", slog.String("error", cerr.Error()))
 		}
 	}
-	return grouper, consumer, closeFn, nil
+	return consumer, closeFn, nil
 }
 
 func buildSummarizer(cfg *config.Config) (application.Summarizer, error) {
