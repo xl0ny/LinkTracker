@@ -14,12 +14,20 @@ import (
 type recordingPublisher struct {
 	mu      sync.Mutex
 	updates []domain.ProcessedUpdate
+	values  []string
 }
 
-func (r *recordingPublisher) Publish(_ context.Context, u domain.ProcessedUpdate) error {
+type contextKey string
+
+const testContextKey contextKey = "test-key"
+
+func (r *recordingPublisher) Publish(ctx context.Context, u domain.ProcessedUpdate) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.updates = append(r.updates, u)
+	if value, ok := ctx.Value(testContextKey).(string); ok {
+		r.values = append(r.values, value)
+	}
 	return nil
 }
 
@@ -28,6 +36,14 @@ func (r *recordingPublisher) snapshot() []domain.ProcessedUpdate {
 	defer r.mu.Unlock()
 	out := make([]domain.ProcessedUpdate, len(r.updates))
 	copy(out, r.updates)
+	return out
+}
+
+func (r *recordingPublisher) valueSnapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, len(r.values))
+	copy(out, r.values)
 	return out
 }
 
@@ -107,4 +123,24 @@ func TestGrouper_FanOutMultipleChats(t *testing.T) {
 		require.Equal(t, "shared update", u.Description)
 		require.Len(t, u.TgChatIDs, 1)
 	}
+}
+
+func TestGrouper_UsesPublishContextOnTimedFlush(t *testing.T) {
+	pub := &recordingPublisher{}
+	g := NewGrouper(pub, GrouperConfig{Window: 50 * time.Millisecond})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go g.Run(ctx)
+
+	publishCtx := context.WithValue(context.Background(), testContextKey, "publish-context")
+	require.NoError(t, g.Publish(publishCtx, domain.ProcessedUpdate{
+		EventID: "e1", Description: "ctx update", TgChatIDs: []int64{1}, Priority: PriorityMedium,
+	}))
+
+	require.Eventually(t, func() bool {
+		return len(pub.valueSnapshot()) == 1
+	}, time.Second, 10*time.Millisecond)
+
+	require.Equal(t, []string{"publish-context"}, pub.valueSnapshot())
 }

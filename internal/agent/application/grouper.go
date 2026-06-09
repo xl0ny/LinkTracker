@@ -20,6 +20,7 @@ type GrouperConfig struct {
 }
 
 type chatGroup struct {
+	ctx   context.Context
 	items []domain.ProcessedUpdate
 	timer *time.Timer
 }
@@ -41,11 +42,11 @@ func NewGrouper(publisher UpdatePublisher, cfg GrouperConfig) *Grouper {
 }
 
 // Publish ставит обновление в буфер группировки по каждому tgChatId.
-func (g *Grouper) Publish(_ context.Context, update domain.ProcessedUpdate) error {
+func (g *Grouper) Publish(ctx context.Context, update domain.ProcessedUpdate) error {
 	for _, chatID := range update.TgChatIDs {
 		single := update
 		single.TgChatIDs = []int64{chatID}
-		g.enqueue(chatID, single)
+		g.enqueue(ctx, chatID, single)
 	}
 	return nil
 }
@@ -56,13 +57,13 @@ func (g *Grouper) Run(ctx context.Context) {
 	g.flushAll(ctx)
 }
 
-func (g *Grouper) enqueue(chatID int64, update domain.ProcessedUpdate) {
+func (g *Grouper) enqueue(ctx context.Context, chatID int64, update domain.ProcessedUpdate) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	grp, ok := g.groups[chatID]
 	if !ok {
-		grp = &chatGroup{}
+		grp = &chatGroup{ctx: ctx}
 		g.groups[chatID] = grp
 		grp.timer = time.AfterFunc(g.window, func() {
 			g.flushChat(chatID)
@@ -79,13 +80,14 @@ func (g *Grouper) flushChat(chatID int64) {
 		return
 	}
 	items := grp.items
+	ctx := grp.ctx
 	if grp.timer != nil {
 		grp.timer.Stop()
 	}
 	delete(g.groups, chatID)
 	g.mu.Unlock()
 
-	g.publishGroup(context.Background(), items)
+	g.publishGroup(ctx, items)
 }
 
 func (g *Grouper) flushAll(ctx context.Context) {
