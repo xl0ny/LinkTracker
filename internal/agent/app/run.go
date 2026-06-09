@@ -23,7 +23,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	if !cfg.Kafka.Kafka.Enabled {
+	if !cfg.Kafka.Cluster.Enabled {
 		return errors.New("agent run: kafka must be enabled")
 	}
 
@@ -63,8 +63,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	slog.Info("agent run: started",
 		slog.String("port", cfg.Port),
-		slog.String("raw_topic", cfg.Kafka.Kafka.RawUpdatesTopic),
-		slog.String("processed_topic", cfg.Kafka.Kafka.ProcessedUpdatesTopic),
+		slog.String("raw_topic", cfg.Kafka.Cluster.RawUpdatesTopic),
+		slog.String("processed_topic", cfg.Kafka.Cluster.ProcessedUpdatesTopic),
 		slog.String("summarizer", strings.ToLower(strings.TrimSpace(cfg.AIAgent.Summarization.Mode))),
 		slog.Int("threshold", cfg.AIAgent.Summarization.Threshold),
 	)
@@ -89,7 +89,7 @@ func buildKafkaPipeline(
 	cfg *config.Config,
 	processor agentkafka.Processor,
 ) (*application.Grouper, *agentkafka.Consumer, func(), error) {
-	producer, err := agentkafka.NewProducer(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer)
+	producer, err := agentkafka.NewProducer(ctx, cfg.Kafka.Cluster, cfg.Kafka.Producer.KafkaProducer)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("agent run: producer: %w", err)
 	}
@@ -100,7 +100,7 @@ func buildKafkaPipeline(
 	})
 	go grouper.Run(ctx)
 
-	consumer, err := agentkafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, processor, grouper)
+	consumer, err := agentkafka.NewConsumer(cfg.Kafka.Cluster, cfg.Kafka.Consumer.KafkaConsumer, processor, grouper)
 	if err != nil {
 		_ = producer.Close()
 		return nil, nil, nil, fmt.Errorf("agent run: consumer: %w", err)

@@ -56,17 +56,19 @@ type Config struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 
-	Kafka struct {
-		config.Kafka `yaml:",inline"`
-		Consumer     struct {
-			config.KafkaConsumer `yaml:",inline"`
-		} `yaml:"consumer"`
-		Producer struct {
-			config.KafkaProducer `yaml:",inline"`
-		} `yaml:"producer"`
-	} `yaml:"kafka"`
+	Kafka KafkaSettings `yaml:"kafka"`
 
 	AIAgent AIAgent `yaml:"ai-agent"`
+}
+
+type KafkaSettings struct {
+	Cluster  config.Kafka `yaml:",inline"`
+	Consumer struct {
+		config.KafkaConsumer `yaml:",inline"`
+	} `yaml:"consumer"`
+	Producer struct {
+		config.KafkaProducer `yaml:",inline"`
+	} `yaml:"producer"`
 }
 
 func (c *Config) GetLevel() slog.Level {
