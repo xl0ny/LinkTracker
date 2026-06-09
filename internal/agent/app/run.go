@@ -87,7 +87,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 func buildKafkaPipeline(
 	ctx context.Context,
 	cfg *config.Config,
-	processor agentkafka.Processor,
+	processor application.RawUpdateProcessor,
 ) (*agentkafka.Consumer, func(), error) {
 	producer, err := agentkafka.NewProducer(ctx, cfg.Kafka.Cluster, cfg.Kafka.Producer.KafkaProducer)
 	if err != nil {
@@ -100,7 +100,8 @@ func buildKafkaPipeline(
 	})
 	go grouper.Run(ctx)
 
-	consumer, err := agentkafka.NewConsumer(cfg.Kafka.Cluster, cfg.Kafka.Consumer.KafkaConsumer, processor, grouper)
+	handler := application.NewUpdateHandler(processor, grouper)
+	consumer, err := agentkafka.NewConsumer(cfg.Kafka.Cluster, cfg.Kafka.Consumer.KafkaConsumer, handler)
 	if err != nil {
 		_ = producer.Close()
 		return nil, nil, fmt.Errorf("agent run: consumer: %w", err)

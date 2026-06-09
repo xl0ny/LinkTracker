@@ -16,12 +16,8 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
 )
 
-type Processor interface {
-	Process(ctx context.Context, raw domain.RawUpdate) (domain.ProcessedUpdate, bool, error)
-}
-
-type ProcessedPublisher interface {
-	Publish(ctx context.Context, u domain.ProcessedUpdate) error
+type RawUpdateHandler interface {
+	Handle(ctx context.Context, raw domain.RawUpdate) error
 }
 
 type Consumer struct {
@@ -30,18 +26,20 @@ type Consumer struct {
 
 	sr *registry.Client
 
-	processor  Processor
-	publisher  ProcessedPublisher
+	handler    RawUpdateHandler
 	maxRetries int
 	retryDelay time.Duration
 }
 
-func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, processor Processor, publisher ProcessedPublisher) (*Consumer, error) {
+func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, handler RawUpdateHandler) (*Consumer, error) {
 	if kconfig.SchemaRegistryURL == "" {
 		return nil, errors.New("agent-consumer: schema_registry_url required")
 	}
 	if kconfig.RawUpdatesTopic == "" {
 		return nil, errors.New("agent-consumer: raw_updates_topic required")
+	}
+	if handler == nil {
+		return nil, errors.New("agent-consumer: handler required")
 	}
 	startOffset := kafkago.LastOffset
 	if cconfig.StartOffset == "earliest" {
@@ -73,8 +71,7 @@ func NewConsumer(kconfig config.Kafka, cconfig config.KafkaConsumer, processor P
 		reader:     reader,
 		dlqWriter:  dlqWriter,
 		sr:         registry.NewClient(kconfig.SchemaRegistryURL),
-		processor:  processor,
-		publisher:  publisher,
+		handler:    handler,
 		maxRetries: cconfig.ProcessRetries,
 		retryDelay: cconfig.RetryDelay,
 	}, nil
@@ -124,22 +121,7 @@ func (c *Consumer) handleMessage(ctx context.Context, msg kafkago.Message) error
 		return err
 	}
 	return c.retryBusiness(ctx, func(ctx context.Context) error {
-		processed, ok, perr := c.processor.Process(ctx, raw)
-		if perr != nil {
-			return wrapErr("process raw update", perr)
-		}
-		if !ok {
-			return nil
-		}
-		if pubErr := c.publisher.Publish(ctx, processed); pubErr != nil {
-			return wrapErr("publish processed update", pubErr)
-		}
-		slog.Info("agent: processed update published",
-			slog.String("event_id", processed.EventID),
-			slog.String("url", processed.URL),
-			slog.Int("chats", len(processed.TgChatIDs)),
-		)
-		return nil
+		return wrapErr("handle raw update", c.handler.Handle(ctx, raw))
 	})
 }
 
