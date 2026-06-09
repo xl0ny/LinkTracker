@@ -69,13 +69,11 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		slog.Int("threshold", cfg.AIAgent.Summarization.Threshold),
 	)
 
-	var runErr error
 	select {
 	case <-ctx.Done():
 	case rerr := <-consumerErr:
 		if rerr != nil {
 			slog.Error("agent run: consumer terminated", slog.String("error", rerr.Error()))
-			runErr = fmt.Errorf("agent run: consumer terminated: %w", rerr)
 		}
 	}
 
@@ -83,7 +81,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		slog.Error("agent run: http shutdown", slog.String("error", shutErr.Error()))
 	}
 	<-httpDone
-	return runErr
+	return nil
 }
 
 func buildKafkaPipeline(
