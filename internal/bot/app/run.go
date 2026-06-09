@@ -94,7 +94,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 // attachKafkaConsumer starts the Kafka consumer when enabled; Redis is wired for idempotency when configured.
 func attachKafkaConsumer(ctx context.Context, cfg *config.Config, sender kafka.MessageSender) (cleanup func(), err error) {
 	cleanup = func() {}
-	if !cfg.Kafka.Kafka.Enabled {
+	if !cfg.Kafka.Cluster.Enabled {
 		return cleanup, nil
 	}
 
@@ -114,7 +114,7 @@ func attachKafkaConsumer(ctx context.Context, cfg *config.Config, sender kafka.M
 		idem = redisStore
 	}
 
-	kafkaConsumer, kerr := kafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, sender, idem)
+	kafkaConsumer, kerr := kafka.NewConsumer(cfg.Kafka.Cluster, cfg.Kafka.Consumer.KafkaConsumer, sender, idem)
 	if kerr != nil {
 		cleanup()
 		return nil, fmt.Errorf("bot run: kafka consumer: %w", kerr)
