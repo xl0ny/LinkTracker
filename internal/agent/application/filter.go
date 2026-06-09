@@ -7,6 +7,30 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/agent/domain"
 )
 
+type SkipReason int
+
+const (
+	SkipNone SkipReason = iota
+	SkipStopWord
+	SkipExcludedAuthor
+	SkipMinLength
+)
+
+func (s SkipReason) String() string {
+	switch s {
+	case SkipNone:
+		return "none"
+	case SkipStopWord:
+		return "stop_word"
+	case SkipExcludedAuthor:
+		return "excluded_author"
+	case SkipMinLength:
+		return "min_length"
+	default:
+		return "unknown"
+	}
+}
+
 type FilterConfig struct {
 	StopWords       []string
 	ExcludedAuthors []string
@@ -35,30 +59,6 @@ func NewFilter(cfg FilterConfig) *Filter {
 		}
 	}
 	return &Filter{stopWords: stop, excludedAuthors: excl, minLength: cfg.MinLength}
-}
-
-type SkipReason int
-
-const (
-	SkipNone SkipReason = iota
-	SkipStopWord
-	SkipExcludedAuthor
-	SkipMinLength
-)
-
-func (s SkipReason) String() string {
-	switch s {
-	case SkipNone:
-		return "none"
-	case SkipStopWord:
-		return "stop_word"
-	case SkipExcludedAuthor:
-		return "excluded_author"
-	case SkipMinLength:
-		return "min_length"
-	default:
-		return "unknown"
-	}
 }
 
 func (f *Filter) Decide(u domain.RawUpdate) SkipReason {
