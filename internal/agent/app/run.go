@@ -44,15 +44,8 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	})
 	processor := application.NewProcessor(filter, sum, cfg.AIAgent.Summarization.Threshold, prioritizer)
 
-	httpDone := make(chan struct{})
-	srv, err := startHealthServer(ctx, cfg.Port, httpDone)
-	if err != nil {
-		return err
-	}
-
 	consumer, closeKafka, err := buildKafkaPipeline(ctx, cfg, processor)
 	if err != nil {
-		shutdownHealthServer(srv, httpDone)
 		return err
 	}
 	defer closeKafka()
@@ -62,6 +55,12 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		consumerErr <- consumer.Run(ctx)
 	}()
 
+	httpDone := make(chan struct{})
+	srv, err := startHealthServer(ctx, cfg.Port, httpDone)
+	if err != nil {
+		return err
+	}
+
 	slog.Info("agent run: started",
 		slog.String("port", cfg.Port),
 		slog.String("raw_topic", cfg.Kafka.Cluster.RawUpdatesTopic),
@@ -70,16 +69,21 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		slog.Int("threshold", cfg.AIAgent.Summarization.Threshold),
 	)
 
+	var runErr error
 	select {
 	case <-ctx.Done():
 	case rerr := <-consumerErr:
 		if rerr != nil {
 			slog.Error("agent run: consumer terminated", slog.String("error", rerr.Error()))
+			runErr = fmt.Errorf("agent run: consumer terminated: %w", rerr)
 		}
 	}
 
-	shutdownHealthServer(srv, httpDone)
-	return nil
+	if shutErr := srv.Shutdown(context.Background()); shutErr != nil {
+		slog.Error("agent run: http shutdown", slog.String("error", shutErr.Error()))
+	}
+	<-httpDone
+	return runErr
 }
 
 func buildKafkaPipeline(
@@ -164,11 +168,4 @@ func startHealthServer(ctx context.Context, port string, done chan<- struct{}) (
 		}
 	}()
 	return srv, nil
-}
-
-func shutdownHealthServer(srv *http.Server, done <-chan struct{}) {
-	if shutErr := srv.Shutdown(context.Background()); shutErr != nil {
-		slog.Error("agent run: http shutdown", slog.String("error", shutErr.Error()))
-	}
-	<-done
 }
