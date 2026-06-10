@@ -2,8 +2,8 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -131,7 +131,9 @@ func mergeGroupedUpdates(items []domain.ProcessedUpdate) domain.ProcessedUpdate 
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		fmt.Fprintf(&b, "%d. %s", i+1, item.Description)
+		b.WriteString(strconv.Itoa(i + 1))
+		b.WriteString(". ")
+		b.WriteString(item.Description)
 		priority = maxPriority(priority, item.Priority)
 	}
 	return domain.ProcessedUpdate{
