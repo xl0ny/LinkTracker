@@ -219,9 +219,6 @@ func (c *Consumer) writeToDLQ(ctx context.Context, msg kafkago.Message, processE
 }
 
 func wrapErr(operation string, err error) error {
-	if err == nil {
-		return nil
-	}
 	return fmt.Errorf("agent-consumer: %s: %w", operation, err)
 }
 
