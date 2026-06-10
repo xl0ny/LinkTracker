@@ -9,7 +9,7 @@ import (
 )
 
 type RawUpdateProcessor interface {
-	Process(ctx context.Context, raw domain.RawUpdate) (domain.ProcessedUpdate, bool, error)
+	Process(ctx context.Context, raw domain.RawUpdate) (domain.ProcessedUpdate, bool)
 }
 
 type UpdateHandler struct {
@@ -22,14 +22,11 @@ func NewUpdateHandler(processor RawUpdateProcessor, publisher UpdatePublisher) *
 }
 
 func (h *UpdateHandler) Handle(ctx context.Context, raw domain.RawUpdate) error {
-	processed, ok, err := h.processor.Process(ctx, raw)
-	if err != nil {
-		return fmt.Errorf("process raw update: %w", err)
-	}
+	processed, ok := h.processor.Process(ctx, raw)
 	if !ok {
 		return nil
 	}
-	if err = h.publisher.Publish(ctx, processed); err != nil {
+	if err := h.publisher.Publish(ctx, processed); err != nil {
 		return fmt.Errorf("publish processed update: %w", err)
 	}
 	slog.Info("agent: processed update published",

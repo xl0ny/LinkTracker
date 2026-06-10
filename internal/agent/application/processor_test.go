@@ -32,11 +32,10 @@ func TestProcessor_FiltersBlockedUpdates(t *testing.T) {
 	sum := &fakeSummarizer{out: "summary"}
 	p := newTestProcessor(filter, sum, 10)
 
-	_, ok, err := p.Process(context.Background(), domain.RawUpdate{
+	_, ok := p.Process(context.Background(), domain.RawUpdate{
 		Description: "buy now spam offer",
 		Author:      "alice",
 	})
-	require.NoError(t, err)
 	require.False(t, ok)
 	require.False(t, sum.called)
 }
@@ -47,14 +46,13 @@ func TestProcessor_LongTextSummarized(t *testing.T) {
 	sum := &fakeSummarizer{out: "short summary"}
 	p := newTestProcessor(filter, sum, 500)
 
-	out, ok, err := p.Process(context.Background(), domain.RawUpdate{
+	out, ok := p.Process(context.Background(), domain.RawUpdate{
 		EventID:     "e1",
 		URL:         "https://example.com",
 		Description: long,
 		Author:      "alice",
 		TgChatIDs:   []int64{42},
 	})
-	require.NoError(t, err)
 	require.True(t, ok)
 	require.True(t, sum.called)
 	require.Equal(t, "short summary", out.Description)
@@ -69,14 +67,13 @@ func TestProcessor_ShortTextNotSummarized(t *testing.T) {
 	sum := &fakeSummarizer{out: "should not be used"}
 	p := newTestProcessor(filter, sum, 500)
 
-	out, ok, err := p.Process(context.Background(), domain.RawUpdate{
+	out, ok := p.Process(context.Background(), domain.RawUpdate{
 		EventID:     "e2",
 		URL:         "https://example.com",
 		Description: short,
 		Author:      "alice",
 		TgChatIDs:   []int64{1, 2},
 	})
-	require.NoError(t, err)
 	require.True(t, ok)
 	require.False(t, sum.called)
 	require.Equal(t, short, out.Description)
@@ -88,13 +85,12 @@ func TestProcessor_SummarizerErrorFallsBackToOriginal(t *testing.T) {
 	sum := &fakeSummarizer{err: errors.New("boom")}
 	p := newTestProcessor(filter, sum, 500)
 
-	out, ok, err := p.Process(context.Background(), domain.RawUpdate{
+	out, ok := p.Process(context.Background(), domain.RawUpdate{
 		EventID:     "e3",
 		URL:         "https://example.com",
 		Description: long,
 		TgChatIDs:   []int64{99},
 	})
-	require.NoError(t, err)
 	require.True(t, ok)
 	require.True(t, sum.called)
 	require.Equal(t, long, out.Description)
@@ -108,11 +104,10 @@ func TestProcessor_PrioritizesUpdate(t *testing.T) {
 	})
 	p := NewProcessor(filter, nil, 0, prioritizer)
 
-	out, ok, err := p.Process(context.Background(), domain.RawUpdate{
+	out, ok := p.Process(context.Background(), domain.RawUpdate{
 		Description: "critical security patch",
 		Author:      "alice",
 	})
-	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, PriorityHigh, out.Priority)
 }
