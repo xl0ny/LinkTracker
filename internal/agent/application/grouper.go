@@ -15,6 +15,8 @@ type UpdatePublisher interface {
 	Publish(ctx context.Context, u domain.ProcessedUpdate) error
 }
 
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mocks.go -package=mocks . UpdatePublisher
+
 type GrouperConfig struct {
 	Window time.Duration
 }
