@@ -142,11 +142,8 @@ func (c *Consumer) consumeUpdates(ctx context.Context) error {
 			return wrapConsumerError("fetch message", err)
 		}
 
-		var processErr error
-		record, decErr := c.decodeUpdate(ctx, msg)
-		if decErr != nil {
-			processErr = decErr
-		} else {
+		record, processErr := c.decodeUpdate(ctx, msg)
+		if processErr == nil {
 			processErr = c.retryBusiness(ctx, func(ctx context.Context) error {
 				return c.deliverUpdate(ctx, record)
 			})
@@ -173,11 +170,8 @@ func (c *Consumer) consumeFailed(ctx context.Context) error {
 			return wrapConsumerError("fetch message", err)
 		}
 
-		var processErr error
-		chatID, record, decErr := c.decodeFailed(ctx, msg)
-		if decErr != nil {
-			processErr = decErr
-		} else {
+		chatID, record, processErr := c.decodeFailed(ctx, msg)
+		if processErr == nil {
 			processErr = c.retryBusiness(ctx, func(ctx context.Context) error {
 				return c.deliverFailed(ctx, chatID, record)
 			})
