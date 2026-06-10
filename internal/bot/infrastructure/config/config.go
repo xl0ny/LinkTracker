@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -52,7 +53,9 @@ func (c *Config) GetLevel() slog.Level {
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("bot config: load .env: %w", err)
+	}
 
 	data, err := os.ReadFile("cmd/bot/config.yaml")
 	if err != nil {
