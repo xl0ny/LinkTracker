@@ -97,7 +97,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	soHTTP := resilience.NewHTTPClient("stackoverflow", cfg.Resilience)
 	gh := github.NewClient(ghHTTP, os.Getenv("GITHUB_TOKEN"))
 	so := stackoverflow.NewClient(soHTTP)
-	lc := checker.WithMetrics(checker.New(gh, so), scrapperMetrics)
+	lc := checker.New(gh, so).WithMetrics(scrapperMetrics)
 
 	notifier, publisher, npErr := buildNotifier(ctx, repo, botAPI, cfg, scrapperMetrics)
 	if npErr != nil {

@@ -60,8 +60,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 
 	startWorkers(runtime)
 
-	metricsCleanup := runMetricsServer(reg, cfg.MetricsPort)
-	defer metricsCleanup()
+	defer runMetricsServer(reg, cfg.MetricsPort)()
 
 	return serveBotAPI(ctx, cfg, runtime.sender, botMetrics)
 }
