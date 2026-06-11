@@ -25,15 +25,25 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "description": "RED: доля ответов 5xx",
+      "description": "RED: доля ответов с ошибками (4xx + 5xx) от общего числа запросов, с разбивкой по классам",
       "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1 }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "id": 2,
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{app=\"$app\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{app=\"$app\"}[5m]))",
-          "legendFormat": "error ratio",
+          "expr": "sum(rate(http_requests_total{app=\"$app\",status=~\"[45]..\"}[5m])) / sum(rate(http_requests_total{app=\"$app\"}[5m]))",
+          "legendFormat": "all errors",
           "refId": "A"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{app=\"$app\",status=~\"4..\"}[5m])) / sum(rate(http_requests_total{app=\"$app\"}[5m]))",
+          "legendFormat": "4xx",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{app=\"$app\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{app=\"$app\"}[5m]))",
+          "legendFormat": "5xx",
+          "refId": "C"
         }
       ],
       "title": "HTTP error ratio",

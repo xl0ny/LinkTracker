@@ -5,7 +5,9 @@
 # HTTP RPS по маршруту
 sum(rate(http_requests_total{app="$app"}[5m])) by (route)
 
-# Доля HTTP 5xx
+# Доля HTTP-ошибок: все ошибки (4xx + 5xx) и разбивка по классам
+sum(rate(http_requests_total{app="$app",status=~"[45].."}[5m])) / sum(rate(http_requests_total{app="$app"}[5m]))
+sum(rate(http_requests_total{app="$app",status=~"4.."}[5m])) / sum(rate(http_requests_total{app="$app"}[5m]))
 sum(rate(http_requests_total{app="$app",status=~"5.."}[5m])) / sum(rate(http_requests_total{app="$app"}[5m]))
 
 # HTTP latency p95
