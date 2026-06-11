@@ -15,16 +15,16 @@ const (
 	ScopeLLMAgent       = "llm_agent"
 )
 
-type Scrapper struct {
+type ScrapperMetrics struct {
 	LinksOnTrack    *prometheus.GaugeVec
 	RequestDuration *prometheus.HistogramVec
 	APIRequests     *prometheus.CounterVec
 	RED             *RED
 }
 
-func NewScrapper(reg *Registry) *Scrapper {
+func NewScrapperMetrics(reg *Registry) *ScrapperMetrics {
 	labels := prometheus.Labels{"app": reg.App}
-	s := &Scrapper{
+	s := &ScrapperMetrics{
 		LinksOnTrack: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "links_on_track_total",
 			Help:        "Links in DB on monitoring",
@@ -53,7 +53,7 @@ func NewScrapper(reg *Registry) *Scrapper {
 	return s
 }
 
-func (s *Scrapper) APIRequestsMiddleware(next http.Handler) http.Handler {
+func (s *ScrapperMetrics) APIRequestsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		source := r.Header.Get("X-Metrics-Source")
 		if source == "" {
@@ -71,7 +71,7 @@ func IsLLMPipelineTopic(topic string) bool {
 	return strings.Contains(t, "raw-updates") && !strings.Contains(t, "dlq")
 }
 
-func (s *Scrapper) ObserveKafkaWrite(topic string, start time.Time) {
+func (s *ScrapperMetrics) ObserveKafkaWrite(topic string, start time.Time) {
 	if s == nil {
 		return
 	}

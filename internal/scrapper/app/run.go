@@ -54,7 +54,7 @@ func Run(ctx context.Context, cfg *config.Config) error {
 	defer cancel()
 
 	reg := prometrics.New("scrapper")
-	scrapperMetrics := prometrics.NewScrapper(reg)
+	scrapperMetrics := prometrics.NewScrapperMetrics(reg)
 	prometrics.StartPusher(ctx, reg, prometrics.PushConfig{
 		Enabled:  cfg.Metrics.Pushgateway.Enabled,
 		URL:      cfg.Metrics.Pushgateway.URL,
@@ -187,7 +187,7 @@ func buildNotifier(
 	repo Repository,
 	botAPI *botclient.ClientWithResponses,
 	cfg *config.Config,
-	m *prometrics.Scrapper,
+	m *prometrics.ScrapperMetrics,
 ) (application.BotNotifier, *outbox.Publisher, error) {
 	primary := botclient.NewNotifier(botAPI)
 	if !cfg.Kafka.Kafka.Enabled {

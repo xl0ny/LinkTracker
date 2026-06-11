@@ -21,14 +21,14 @@ const (
 type Checker struct {
 	github    *github.Client
 	stackover *stackoverflow.Client
-	metrics   *prometrics.Scrapper
+	metrics   *prometrics.ScrapperMetrics
 }
 
 func New(githubClient *github.Client, stackoverClient *stackoverflow.Client) *Checker {
 	return &Checker{github: githubClient, stackover: stackoverClient}
 }
 
-func (c *Checker) WithMetrics(m *prometrics.Scrapper) *Checker {
+func (c *Checker) WithMetrics(m *prometrics.ScrapperMetrics) *Checker {
 	c.metrics = m
 	return c
 }

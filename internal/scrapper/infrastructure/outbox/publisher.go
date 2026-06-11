@@ -26,7 +26,7 @@ type PublisherRepository interface {
 type Publisher struct {
 	repo   PublisherRepository
 	writer *kafkago.Writer
-	m      *prometrics.Scrapper
+	m      *prometrics.ScrapperMetrics
 
 	pollInterval time.Duration
 	batchSize    int
@@ -36,7 +36,7 @@ type Publisher struct {
 	maxBackoff   time.Duration
 }
 
-func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.KafkaProducer, ocfg config.KafkaOutbox, m *prometrics.Scrapper) *Publisher {
+func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.KafkaProducer, ocfg config.KafkaOutbox, m *prometrics.ScrapperMetrics) *Publisher {
 	dialer := &kafkago.Dialer{ClientID: pcfg.ProducerClient}
 	writer := kafkago.NewWriter(kafkago.WriterConfig{
 		Brokers:      kcfg.Brokers,

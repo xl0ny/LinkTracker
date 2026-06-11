@@ -24,10 +24,10 @@ type inner interface {
 
 type Repository struct {
 	inner inner
-	m     *prometrics.Scrapper
+	m     *prometrics.ScrapperMetrics
 }
 
-func Wrap(r inner, m *prometrics.Scrapper) *Repository {
+func Wrap(r inner, m *prometrics.ScrapperMetrics) *Repository {
 	return &Repository{inner: r, m: m}
 }
 
@@ -168,21 +168,21 @@ func (r *Repository) WithTx(ctx context.Context, fn func(ctx context.Context) er
 	})
 }
 
-func timedErr(m *prometrics.Scrapper, table string, fn func() error) error {
+func timedErr(m *prometrics.ScrapperMetrics, table string, fn func() error) error {
 	start := time.Now()
 	err := fn()
 	prometrics.ObserveDuration(m.RequestDuration, prometrics.ScopeDatabase, table, start)
 	return err
 }
 
-func timedVal[T any](m *prometrics.Scrapper, table string, fn func() (T, error)) (T, error) {
+func timedVal[T any](m *prometrics.ScrapperMetrics, table string, fn func() (T, error)) (T, error) {
 	start := time.Now()
 	v, err := fn()
 	prometrics.ObserveDuration(m.RequestDuration, prometrics.ScopeDatabase, table, start)
 	return v, err
 }
 
-func timedMap(m *prometrics.Scrapper, table string, fn func() (map[string]int, error)) (map[string]int, error) {
+func timedMap(m *prometrics.ScrapperMetrics, table string, fn func() (map[string]int, error)) (map[string]int, error) {
 	start := time.Now()
 	v, err := fn()
 	prometrics.ObserveDuration(m.RequestDuration, prometrics.ScopeDatabase, table, start)

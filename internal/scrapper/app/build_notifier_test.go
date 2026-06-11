@@ -15,8 +15,8 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/prometrics"
 )
 
-func testScrapperMetrics() *prometrics.Scrapper {
-	return prometrics.NewScrapper(prometrics.New("test"))
+func testScrapperMetrics() *prometrics.ScrapperMetrics {
+	return prometrics.NewScrapperMetrics(prometrics.New("test"))
 }
 
 func TestBuildNotifier_kafkaDisabledUsesHTTPNotifier(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 
 const defaultLinksRefreshInterval = 30 * time.Second
 
-func refreshLinksOnTrack(ctx context.Context, repo *metricsrepo.Repository, m *prometrics.Scrapper, interval time.Duration) {
+func refreshLinksOnTrack(ctx context.Context, repo *metricsrepo.Repository, m *prometrics.ScrapperMetrics, interval time.Duration) {
 	if interval <= 0 {
 		interval = defaultLinksRefreshInterval
 	}
@@ -29,7 +29,7 @@ func refreshLinksOnTrack(ctx context.Context, repo *metricsrepo.Repository, m *p
 	}
 }
 
-func applyLinksOnTrack(ctx context.Context, repo *metricsrepo.Repository, m *prometrics.Scrapper) {
+func applyLinksOnTrack(ctx context.Context, repo *metricsrepo.Repository, m *prometrics.ScrapperMetrics) {
 	counts, err := repo.CountTrackedLinksBySource(ctx)
 	if err != nil {
 		slog.Warn("scrapper metrics: links_on_track refresh", slog.String("error", err.Error()))

@@ -27,10 +27,10 @@ type Notifier struct {
 	failedWriter *kafkago.Writer
 	rawEnc       *registry.SingleEncoder
 	failedEnc    *registry.SingleEncoder
-	metrics      *prometrics.Scrapper
+	metrics      *prometrics.ScrapperMetrics
 }
 
-func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.KafkaProducer, m *prometrics.Scrapper) (*Notifier, error) {
+func NewNotifier(ctx context.Context, kconfig config.Kafka, pconfig config.KafkaProducer, m *prometrics.ScrapperMetrics) (*Notifier, error) {
 	if kconfig.SchemaRegistryURL == "" {
 		return nil, errors.New("kafka-notifier: schema_registry_url required")
 	}
