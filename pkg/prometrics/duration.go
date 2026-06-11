@@ -20,9 +20,9 @@ func ObserveDuration(h *prometheus.HistogramVec, scope, scopeType string, start 
 	h.WithLabelValues(scope, scopeType).Observe(float64(time.Since(start).Milliseconds()))
 }
 
-func Timed(h *prometheus.HistogramVec, scope, scopeType string, fn func() error) error {
+func ObserveOperationDuration(h *prometheus.HistogramVec, scope, scopeType string, operation func() error) error {
 	start := time.Now()
-	err := fn()
+	err := operation()
 	ObserveDuration(h, scope, scopeType, start)
 	return err
 }
