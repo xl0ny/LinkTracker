@@ -29,7 +29,7 @@ func NewBot(reg *Registry) *Bot {
 			Name:        "command_duration_ms_total",
 			Help:        "Command-related operation duration in milliseconds",
 			ConstLabels: labels,
-			Buckets:     durationBuckets,
+			Buckets:     durationMillisecondsBuckets,
 		}, []string{"scope", "scope_type"}),
 		SentNotifications: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "sent_notification_total",

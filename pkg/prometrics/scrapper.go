@@ -34,7 +34,7 @@ func NewScrapper(reg *Registry) *Scrapper {
 			Name:        "request_duration_ms_total",
 			Help:        "Operation duration in milliseconds",
 			ConstLabels: labels,
-			Buckets:     durationBuckets,
+			Buckets:     durationMillisecondsBuckets,
 		}, []string{"scope", "scope_type"}),
 		APIRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "api_requests_total",

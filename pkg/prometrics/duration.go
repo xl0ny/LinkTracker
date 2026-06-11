@@ -6,13 +6,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var durationBuckets = []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000}
+var durationMillisecondsBuckets = []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000}
 
 func NewDurationHistogram(name, help string) *prometheus.HistogramVec {
 	return prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    name,
 		Help:    help,
-		Buckets: durationBuckets,
+		Buckets: durationMillisecondsBuckets,
 	}, []string{"scope", "scope_type"})
 }
 
