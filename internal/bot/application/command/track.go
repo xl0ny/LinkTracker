@@ -60,7 +60,7 @@ func (t *Track) step(ctx context.Context, action domain.Action, state *applicati
 		}, nil
 	case application.TrackPhaseTags:
 		var tags []string
-		if text != "" && text != "/skip" {
+		if text != "" && !isSkipTagsInput(text) {
 			tags = application.ParseTags(text)
 		}
 		if err := t.tracker.AddLink(ctx, action.ChatID, state.Link, tags); err != nil {
@@ -75,4 +75,9 @@ func (t *Track) step(ctx context.Context, action domain.Action, state *applicati
 		return "Ссылка добавлена в отслеживание", true, nil, nil
 	}
 	return "", false, nil, nil
+}
+
+func isSkipTagsInput(text string) bool {
+	normalized := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(text)), "/")
+	return normalized == "skip"
 }

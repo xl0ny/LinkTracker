@@ -13,7 +13,7 @@ func NewDurationHistogram(name, help string) *prometheus.HistogramVec {
 		Name:    name,
 		Help:    help,
 		Buckets: durationMillisecondsBuckets,
-	}, []string{"scope", "scope_type"})
+	}, []string{labelScope, labelScopeType})
 }
 
 func ObserveDuration(h *prometheus.HistogramVec, scope, scopeType string, start time.Time) {

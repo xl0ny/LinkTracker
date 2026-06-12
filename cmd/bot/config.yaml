@@ -1,5 +1,5 @@
 scrapper_url: "http://localhost:8080"
-bot_port: "8081"
+bot_port: "18082"
 metrics_port: "8011"
 
 metrics:

@@ -21,17 +21,17 @@ func NewRED(app string) *RED {
 			Name: "http_requests_total",
 			Help: "Total HTTP requests",
 			ConstLabels: prometheus.Labels{
-				"app": app,
+				labelApp: app,
 			},
-		}, []string{"method", "route", "status"}),
+		}, []string{labelMethod, labelRoute, labelStatus}),
 		Duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name: "http_request_duration_seconds",
 			Help: "HTTP request duration in seconds",
 			ConstLabels: prometheus.Labels{
-				"app": app,
+				labelApp: app,
 			},
 			Buckets: prometheus.DefBuckets,
-		}, []string{"method", "route", "status"}),
+		}, []string{labelMethod, labelRoute, labelStatus}),
 	}
 }
 
@@ -50,9 +50,9 @@ func (r *RED) Middleware(next http.Handler) http.Handler {
 
 		status := strconv.Itoa(ww.Status())
 		labels := prometheus.Labels{
-			"method": req.Method,
-			"route":  route,
-			"status": status,
+			labelMethod: req.Method,
+			labelRoute:  route,
+			labelStatus: status,
 		}
 		r.Requests.With(labels).Inc()
 		r.Duration.With(labels).Observe(time.Since(start).Seconds())

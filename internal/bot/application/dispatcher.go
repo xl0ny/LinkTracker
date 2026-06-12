@@ -38,10 +38,20 @@ func NewDispatcher(cmds []Command, plain PlainMessageHandler, state *TrackStateS
 func (d *Dispatcher) Dispatch(action domain.Action) (text string, err error) {
 	switch {
 	case action.Command != "":
+		if d.shouldDispatchCommandAsPlain(action) {
+			return d.dispatchPlain(action)
+		}
 		return d.dispatchCommand(action)
 	default:
 		return d.dispatchPlain(action)
 	}
+}
+
+func (d *Dispatcher) shouldDispatchCommandAsPlain(action domain.Action) bool {
+	if d.plain == nil || d.state == nil || d.state.Get(action.ChatID) == nil {
+		return false
+	}
+	return action.Command != "cancel" && action.Command != "track"
 }
 
 func (d *Dispatcher) dispatchCommand(action domain.Action) (string, error) {

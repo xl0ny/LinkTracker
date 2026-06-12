@@ -18,7 +18,7 @@ type Bot struct {
 }
 
 func NewBot(reg *Registry) *Bot {
-	labels := prometheus.Labels{"app": reg.App}
+	labels := prometheus.Labels{labelApp: reg.App}
 	b := &Bot{
 		CommandRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "command_requests_total",
@@ -30,7 +30,7 @@ func NewBot(reg *Registry) *Bot {
 			Help:        "Command-related operation duration in milliseconds",
 			ConstLabels: labels,
 			Buckets:     durationMillisecondsBuckets,
-		}, []string{"scope", "scope_type"}),
+		}, []string{labelScope, labelScopeType}),
 		SentNotifications: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "sent_notification_total",
 			Help:        "Sent notifications",
