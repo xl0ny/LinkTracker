@@ -25,7 +25,7 @@ batch:
   size: 250 #50 - 500
 
 scheduler:
-  interval: "1m"
+  interval: "5m"
   workers: 4
 
 kafka:
