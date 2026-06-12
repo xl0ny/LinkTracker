@@ -1,6 +1,15 @@
 package application
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+var (
+	ErrLinkAlreadyExists = errors.New("link already exists")
+	ErrLinkNotFound      = errors.New("link not found")
+	ErrChatNotFound      = errors.New("chat not found")
+)
 
 type LinkTracker interface {
 	RegisterChat(ctx context.Context, chatID int64) error

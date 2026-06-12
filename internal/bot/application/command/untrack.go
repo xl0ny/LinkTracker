@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -29,10 +30,10 @@ func (u *Untrack) Handle(action domain.Action) (string, error) {
 		return "Укажите ссылку: /untrack <ссылка>", nil
 	}
 	if err := u.tracker.RemoveLink(context.Background(), action.ChatID, link); err != nil {
-		if err.Error() == "link not found" {
+		if errors.Is(err, application.ErrLinkNotFound) {
 			return "Ссылка не найдена в отслеживаемых", nil
 		}
-		if err.Error() == errChatNotFound {
+		if errors.Is(err, application.ErrChatNotFound) {
 			return msgUseStart, nil
 		}
 		return "", fmt.Errorf("remove link: %w", err)

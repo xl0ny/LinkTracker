@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -64,10 +65,10 @@ func (t *Track) step(ctx context.Context, action domain.Action, state *applicati
 			tags = application.ParseTags(text)
 		}
 		if err := t.tracker.AddLink(ctx, action.ChatID, state.Link, tags); err != nil {
-			if err.Error() == "link already exists" {
+			if errors.Is(err, application.ErrLinkAlreadyExists) {
 				return "Ссылка уже отслеживается", true, nil, nil
 			}
-			if err.Error() == errChatNotFound {
+			if errors.Is(err, application.ErrChatNotFound) {
 				return msgUseStart, true, nil, nil
 			}
 			return "", false, nil, fmt.Errorf("add link: %w", err)

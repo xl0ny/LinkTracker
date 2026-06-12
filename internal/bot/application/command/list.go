@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,7 +10,6 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
-const errChatNotFound = "chat not found"
 const msgUseStart = "Сначала используйте /start"
 
 type List struct {
@@ -28,7 +28,7 @@ func (l *List) Handle(action domain.Action) (string, error) {
 	tagFilter := strings.TrimSpace(action.Args)
 	links, err := l.tracker.ListLinks(context.Background(), action.ChatID, tagFilter)
 	if err != nil {
-		if err.Error() == errChatNotFound {
+		if errors.Is(err, application.ErrChatNotFound) {
 			return msgUseStart, nil
 		}
 		return "Ошибка получени списка", fmt.Errorf("list links: %w", err)

@@ -63,10 +63,10 @@ func (c *client) AddLink(ctx context.Context, chatID int64, link string, tags []
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusConflict {
-		return errors.New("link already exists")
+		return application.ErrLinkAlreadyExists
 	}
 	if resp.StatusCode == http.StatusNotFound {
-		return errors.New("chat not found")
+		return application.ErrChatNotFound
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("add link: status %d", resp.StatusCode)
@@ -83,7 +83,7 @@ func (c *client) RemoveLink(ctx context.Context, chatID int64, link string) erro
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
-		return errors.New("link not found")
+		return application.ErrLinkNotFound
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("remove link: status %d", resp.StatusCode)
@@ -99,7 +99,7 @@ func (c *client) ListLinks(ctx context.Context, chatID int64, tagFilter string) 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, errors.New("chat not found")
+		return nil, application.ErrChatNotFound
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, fmt.Errorf("list links: status %d", resp.StatusCode)
