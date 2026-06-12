@@ -1,0 +1,10 @@
+.git
+.DS_Store
+.env
+coverage.out
+bin/
+review-screenshots/
+*.png
+*.jpg
+*.jpeg
+*.log

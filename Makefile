@@ -33,7 +33,11 @@ help:
 	@echo "  \033[36mmake loadtest-seed\033[0m - Засеять Postgres данными для нагрузочных тестов"
 	@echo "  \033[36mmake loadtest-run SCENARIO=name\033[0m - Прогнать нагрузочный тест и дописать отчёт"
 	@echo "  \033[36mmake compose-observability\033[0m - Prometheus (9090), Grafana (3000), Pushgateway (9091)"
-	@echo "  \033[36mmake docker-build-apps\033[0m - Build bot and scrapper Docker images"
+	@echo "  \033[36mmake docker-build-apps\033[0m - Build bot, scrapper and agent Docker images"
+	@echo "  \033[36mmake compose-apps\033[0m - Build and run bot, scrapper and agent containers"
+	@echo "  \033[36mmake compose-apps-down\033[0m / \033[36mcompose-apps-logs\033[0m - Stop / tail app containers"
+	@echo "  \033[36mmake docker-up-all\033[0m - Docker-only deploy: infra + Avro schemas + app containers"
+	@echo "  \033[36mmake docker-down-all\033[0m - Stop Docker app containers and compose infrastructure"
 	@echo "  \033[36mmake lint\033[0m - Run golangci-lint"
 
 .PHONY: build
@@ -137,6 +141,19 @@ compose-observability:
 docker-build-apps:
 	@docker build -f deploy/docker/Dockerfile.scrapper -t link-tracker-scrapper:latest .
 	@docker build -f deploy/docker/Dockerfile.bot -t link-tracker-bot:latest .
+	@docker build -f deploy/docker/Dockerfile.agent -t link-tracker-agent:latest .
+
+.PHONY: compose-apps
+compose-apps:
+	@docker compose -f compose.apps.yaml up -d --build
+
+.PHONY: compose-apps-down
+compose-apps-down:
+	@docker compose -f compose.apps.yaml down
+
+.PHONY: compose-apps-logs
+compose-apps-logs:
+	@docker compose -f compose.apps.yaml logs -f
 
 .PHONY: compose-db
 compose-db:
@@ -220,6 +237,35 @@ avro-registrate:
 	@echo "Avro schemas registered successfully"
 
 avro-register: avro-registrate
+
+.PHONY: docker-up-all
+docker-up-all:
+	@echo "\033[36mdocker-up-all:\033[0m Postgres..."
+	@$(MAKE) compose-db
+	@echo "\033[36mdocker-up-all:\033[0m migrations..."
+	@$(MAKE) compose-migrate
+	@echo "\033[36mdocker-up-all:\033[0m Redis..."
+	@docker compose up -d redis
+	@echo "\033[36mdocker-up-all:\033[0m Valkey cluster..."
+	@$(MAKE) compose-valkey
+	@echo "\033[36mdocker-up-all:\033[0m Kafka + Schema Registry + topics..."
+	@$(MAKE) compose-kafka
+	@echo "\033[36mdocker-up-all:\033[0m waiting for Schema Registry ($(SCHEMA_REGISTRY_URL))..."
+	@i=0; until curl -fsS "$(SCHEMA_REGISTRY_URL)/subjects" >/dev/null 2>&1; do \
+		i=$$((i+1)); test $$i -le 120 || (echo "docker-up-all: schema-registry unavailable" && exit 1); \
+		sleep 1; \
+	done
+	@echo "\033[36mdocker-up-all:\033[0m Avro schemas..."
+	@$(MAKE) avro-registrate
+	@echo "\033[36mdocker-up-all:\033[0m observability..."
+	@$(MAKE) compose-observability
+	@echo "\033[36mdocker-up-all:\033[0m bot + scrapper + agent containers..."
+	@$(MAKE) compose-apps
+
+.PHONY: docker-down-all
+docker-down-all:
+	@$(MAKE) compose-apps-down
+	@docker compose stop prometheus grafana pushgateway redis valkey-cluster db kafka-1 kafka-2 kafka-3 kafka-ui schema-registry || true
 
 VALKEY_SERVICE := valkey-cluster
 
