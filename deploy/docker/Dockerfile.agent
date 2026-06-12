@@ -10,5 +10,6 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=build /agent /app/agent
 COPY cmd/agent/config.yaml /app/cmd/agent/config.yaml
+COPY schemas /app/schemas
 EXPOSE 8082
 ENTRYPOINT ["/app/agent"]

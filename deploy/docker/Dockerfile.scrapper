@@ -10,5 +10,6 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=build /scrapper /app/scrapper
 COPY cmd/scrapper/config.yaml /app/cmd/scrapper/config.yaml
+COPY schemas /app/schemas
 EXPOSE 8080
 ENTRYPOINT ["/app/scrapper"]
