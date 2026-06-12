@@ -1,5 +1,6 @@
 COVERAGE_FILE ?= coverage.out
 SCHEMA_REGISTRY_URL ?= http://localhost:18081
+VPS_COMPOSE ?= compose.vps.yaml
 
 # Get all directories in cmd/ as available modules
 MODULES := $(notdir $(wildcard cmd/*))
@@ -38,6 +39,8 @@ help:
 	@echo "  \033[36mmake compose-apps-down\033[0m / \033[36mcompose-apps-logs\033[0m - Stop / tail app containers"
 	@echo "  \033[36mmake docker-up-all\033[0m - Docker-only deploy: infra + Avro schemas + app containers"
 	@echo "  \033[36mmake docker-down-all\033[0m - Stop Docker app containers and compose infrastructure"
+	@echo "  \033[36mmake docker-up-vps\033[0m - VPS deploy: one-broker Kafka + infra + app containers"
+	@echo "  \033[36mmake docker-down-vps\033[0m - Stop VPS app containers and infrastructure"
 	@echo "  \033[36mmake lint\033[0m - Run golangci-lint"
 
 .PHONY: build
@@ -155,6 +158,38 @@ compose-apps-down:
 compose-apps-logs:
 	@docker compose -f compose.apps.yaml logs -f
 
+.PHONY: compose-vps-db
+compose-vps-db:
+	@docker compose -f $(VPS_COMPOSE) up -d db
+
+.PHONY: compose-vps-migrate
+compose-vps-migrate:
+	@docker compose -f $(VPS_COMPOSE) --profile migrate run --rm migrator
+
+.PHONY: compose-vps-cache
+compose-vps-cache:
+	@docker compose -f $(VPS_COMPOSE) up -d redis valkey-cluster
+
+.PHONY: compose-vps-kafka
+compose-vps-kafka:
+	@echo "Starting VPS Kafka lite stack (1 broker) + UI + Schema Registry"
+	@docker compose -f $(VPS_COMPOSE) up -d kafka-1 schema-registry kafka-ui
+	@docker compose -f $(VPS_COMPOSE) run --rm kafka-init
+
+.PHONY: compose-vps-observability
+compose-vps-observability:
+	@echo "Prometheus http://localhost:9090  Grafana http://localhost:3000 (admin/admin)  Pushgateway :9091"
+	@docker compose -f $(VPS_COMPOSE) up -d prometheus grafana pushgateway
+
+.PHONY: compose-vps-ps
+compose-vps-ps:
+	@docker compose -f $(VPS_COMPOSE) ps
+	@docker compose -f compose.apps.yaml ps
+
+.PHONY: compose-vps-logs
+compose-vps-logs:
+	@docker compose -f $(VPS_COMPOSE) logs -f
+
 .PHONY: compose-db
 compose-db:
 	@docker compose up -d db
@@ -266,6 +301,34 @@ docker-up-all:
 docker-down-all:
 	@$(MAKE) compose-apps-down
 	@docker compose stop prometheus grafana pushgateway redis valkey-cluster db kafka-1 kafka-2 kafka-3 kafka-ui schema-registry || true
+
+.PHONY: docker-up-vps
+docker-up-vps:
+	@echo "\033[36mdocker-up-vps:\033[0m Postgres..."
+	@$(MAKE) compose-vps-db
+	@echo "\033[36mdocker-up-vps:\033[0m migrations..."
+	@$(MAKE) compose-vps-migrate
+	@echo "\033[36mdocker-up-vps:\033[0m Redis + Valkey..."
+	@$(MAKE) compose-vps-cache
+	@echo "\033[36mdocker-up-vps:\033[0m Kafka lite + Schema Registry + topics..."
+	@$(MAKE) compose-vps-kafka
+	@echo "\033[36mdocker-up-vps:\033[0m waiting for Schema Registry ($(SCHEMA_REGISTRY_URL))..."
+	@i=0; until curl -fsS "$(SCHEMA_REGISTRY_URL)/subjects" >/dev/null 2>&1; do \
+		i=$$((i+1)); test $$i -le 120 || (echo "docker-up-vps: schema-registry unavailable" && exit 1); \
+		sleep 1; \
+	done
+	@echo "\033[36mdocker-up-vps:\033[0m Avro schemas..."
+	@$(MAKE) avro-registrate
+	@echo "\033[36mdocker-up-vps:\033[0m observability..."
+	@$(MAKE) compose-vps-observability
+	@echo "\033[36mdocker-up-vps:\033[0m bot + scrapper + agent containers..."
+	@$(MAKE) compose-apps
+	@echo "\033[36mdocker-up-vps:\033[0m done"
+
+.PHONY: docker-down-vps
+docker-down-vps:
+	@$(MAKE) compose-apps-down
+	@docker compose -f $(VPS_COMPOSE) down
 
 VALKEY_SERVICE := valkey-cluster
 

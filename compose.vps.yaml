@@ -1,0 +1,236 @@
+x-kafka-lite-env: &kafka-lite-env
+  KAFKA_PROCESS_ROLES: "broker,controller"
+  KAFKA_NODE_ID: "1"
+  KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093"
+  KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:19092,INTERNAL://kafka-1:9094"
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+  KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+  KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+  KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka-1:9093"
+  CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+  KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+  KAFKA_MIN_INSYNC_REPLICAS: "1"
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+  KAFKA_LOG_RETENTION_HOURS: "168"
+  KAFKA_HEAP_OPTS: "-Xms96m -Xmx256m"
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: linktracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d linktracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrator:
+    image: migrate/migrate:v4.19.1
+    profiles: [migrate]
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - "-path"
+      - "/migrations"
+      - "-database"
+      - "postgres://postgres:${POSTGRES_PASSWORD}@db:5432/linktracker?sslmode=disable"
+      - "up"
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    command:
+      - sh
+      - -ec
+      - exec redis-server --appendonly no --save "" --requirepass "$$REDIS_PASSWORD"
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'redis-cli --no-auth-warning -a "$$REDIS_PASSWORD" ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  valkey-cluster:
+    image: valkey/valkey:8-alpine
+    container_name: valkey-cluster
+    restart: unless-stopped
+    ports:
+      - "17000:17000"
+      - "17001:17001"
+      - "17002:17002"
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        AUTH=""
+        if [ -n "$$VALKEY_PASSWORD" ]; then AUTH="--requirepass $$VALKEY_PASSWORD"; fi
+        valkey-server --port 17000 --bind 0.0.0.0 --save "" --appendonly no \
+          --cluster-enabled yes --cluster-config-file nodes-17000.conf $$AUTH &
+        valkey-server --port 17001 --bind 0.0.0.0 --save "" --appendonly no \
+          --cluster-enabled yes --cluster-config-file nodes-17001.conf $$AUTH &
+        valkey-server --port 17002 --bind 0.0.0.0 --save "" --appendonly no \
+          --cluster-enabled yes --cluster-config-file nodes-17002.conf $$AUTH &
+        sleep 2
+        CLI_AUTH=""
+        if [ -n "$$VALKEY_PASSWORD" ]; then CLI_AUTH="-a $$VALKEY_PASSWORD"; fi
+        while ! valkey-cli $$CLI_AUTH --cluster create 127.0.0.1:17000 127.0.0.1:17001 127.0.0.1:17002 --cluster-yes; do
+          sleep 1
+        done
+        wait
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'CLI=""; [ -n "$$VALKEY_PASSWORD" ] && CLI="-a $$VALKEY_PASSWORD"; valkey-cli $$CLI -p 17000 cluster info | grep -q cluster_state:ok',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+  kafka-1:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka-1
+    hostname: kafka-1
+    restart: unless-stopped
+    ports:
+      - "19092:9092"
+      - "29092:9092"
+      - "39092:9092"
+    environment:
+      <<: *kafka-lite-env
+    volumes:
+      - kafka1-data:/var/lib/kafka/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    container_name: schema-registry
+    restart: unless-stopped
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+    ports:
+      - "18081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-1:9094
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: "1"
+      SCHEMA_REGISTRY_HEAP_OPTS: "-Xms96m -Xmx192m"
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka-init
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        BOOTSTRAP="kafka-1:9094"
+
+        create_topic () {
+          local name=$$1
+          local retention=$$2
+          kafka-topics --bootstrap-server "$$BOOTSTRAP" \
+            --create --if-not-exists \
+            --topic "$$name" \
+            --partitions 1 \
+            --replication-factor 1 \
+            --config min.insync.replicas=1 \
+            --config retention.ms="$$retention"
+        }
+
+        create_topic link.raw-updates 604800000
+        create_topic link.processed-updates 604800000
+        create_topic failed-links 604800000
+        create_topic link.raw-updates-dlq 2592000000
+        create_topic link.processed-updates-dlq 2592000000
+
+        kafka-topics --bootstrap-server "$$BOOTSTRAP" --list
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    restart: unless-stopped
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      schema-registry:
+        condition: service_started
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "linktracker-vps"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-1:9094"
+      KAFKA_CLUSTERS_0_SCHEMA_REGISTRY: http://schema-registry:8081
+      DYNAMIC_CONFIG_ENABLED: "true"
+      JAVA_OPTS: "-Xms96m -Xmx192m"
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  pushgateway:
+    image: prom/pushgateway:v1.11.0
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+
+  grafana:
+    image: grafana/grafana-oss:11.5.2
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
+  kafka1-data:
