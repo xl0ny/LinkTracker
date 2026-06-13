@@ -3,46 +3,79 @@ package application
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestPrioritizer_HighKeyword(t *testing.T) {
-	p := NewPrioritizer(PrioritizerConfig{
-		HighKeywords: []string{"critical", "urgent"},
-		LowKeywords:  []string{"minor", "typo"},
-	})
-	require.Equal(t, PriorityHigh, p.Prioritize("critical bug fix in production"))
-}
+func TestPrioritizer_Prioritize(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   PrioritizerConfig
+		text     string
+		expected string
+	}{
+		{
+			name: "high priority keyword",
+			config: PrioritizerConfig{
+				HighKeywords: []string{"critical", "urgent"},
+				LowKeywords:  []string{"minor", "typo"},
+			},
+			text:     "critical bug fix in production",
+			expected: PriorityHigh,
+		},
+		{
+			name: "medium priority without keywords",
+			config: PrioritizerConfig{
+				HighKeywords: []string{"critical", "urgent"},
+				LowKeywords:  []string{"minor", "typo"},
+			},
+			text:     "regular update about new feature",
+			expected: PriorityMedium,
+		},
+		{
+			name: "low priority keyword",
+			config: PrioritizerConfig{
+				HighKeywords: []string{"critical", "urgent"},
+				LowKeywords:  []string{"minor", "typo"},
+			},
+			text:     "fix typo in readme",
+			expected: PriorityLow,
+		},
+		{
+			name: "high priority takes precedence over low",
+			config: PrioritizerConfig{
+				HighKeywords: []string{"critical"},
+				LowKeywords:  []string{"typo"},
+			},
+			text:     "critical typo fix",
+			expected: PriorityHigh,
+		},
+		{
+			name: "high priority keyword is case insensitive",
+			config: PrioritizerConfig{
+				HighKeywords: []string{"URGENT"},
+				LowKeywords:  []string{"Chore"},
+			},
+			text:     "this is UrGeNt news",
+			expected: PriorityHigh,
+		},
+		{
+			name: "low priority keyword is case insensitive",
+			config: PrioritizerConfig{
+				HighKeywords: []string{"URGENT"},
+				LowKeywords:  []string{"Chore"},
+			},
+			text:     "small Chore task",
+			expected: PriorityLow,
+		},
+	}
 
-func TestPrioritizer_MediumNoKeywords(t *testing.T) {
-	p := NewPrioritizer(PrioritizerConfig{
-		HighKeywords: []string{"critical", "urgent"},
-		LowKeywords:  []string{"minor", "typo"},
-	})
-	require.Equal(t, PriorityMedium, p.Prioritize("regular update about new feature"))
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewPrioritizer(tt.config)
 
-func TestPrioritizer_LowKeyword(t *testing.T) {
-	p := NewPrioritizer(PrioritizerConfig{
-		HighKeywords: []string{"critical", "urgent"},
-		LowKeywords:  []string{"minor", "typo"},
-	})
-	require.Equal(t, PriorityLow, p.Prioritize("fix typo in readme"))
-}
+			actual := p.Prioritize(tt.text)
 
-func TestPrioritizer_HighTakesPrecedenceOverLow(t *testing.T) {
-	p := NewPrioritizer(PrioritizerConfig{
-		HighKeywords: []string{"critical"},
-		LowKeywords:  []string{"typo"},
-	})
-	require.Equal(t, PriorityHigh, p.Prioritize("critical typo fix"))
-}
-
-func TestPrioritizer_CaseInsensitive(t *testing.T) {
-	p := NewPrioritizer(PrioritizerConfig{
-		HighKeywords: []string{"URGENT"},
-		LowKeywords:  []string{"Chore"},
-	})
-	require.Equal(t, PriorityHigh, p.Prioritize("this is UrGeNt news"))
-	require.Equal(t, PriorityLow, p.Prioritize("small Chore task"))
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
 }
