@@ -49,7 +49,6 @@ var (
 
 const kafkaProducerModeDirect = "direct"
 
-//nolint:funlen // Точка сборки scrapper все намеренно в одной функции.
 func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
