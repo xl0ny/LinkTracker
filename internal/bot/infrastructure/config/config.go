@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -34,23 +35,27 @@ type Config struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 
-	Kafka struct {
-		config.Kafka `yaml:",inline"`
-		Consumer     struct {
-			config.KafkaConsumer `yaml:",inline"`
-		} `yaml:"consumer"`
-	} `yaml:"kafka"`
+	Kafka KafkaSettings `yaml:"kafka"`
 
 	Resilience resilience.Config `yaml:"resilience"`
 
-	Redis struct {
-		Enabled   bool          `yaml:"enabled"`
-		Addr      string        `yaml:"addr"`
-		Password  string        `envconfig:"REDIS_PASSWORD"`
-		DB        int           `yaml:"db"`
-		KeyPrefix string        `yaml:"key_prefix"`
-		TTL       time.Duration `yaml:"ttl"`
-	} `yaml:"redis"`
+	Redis RedisSettings `yaml:"redis"`
+}
+
+type KafkaSettings struct {
+	Cluster  config.Kafka `yaml:",inline"`
+	Consumer struct {
+		config.KafkaConsumer `yaml:",inline"`
+	} `yaml:"consumer"`
+}
+
+type RedisSettings struct {
+	Enabled   bool          `yaml:"enabled"`
+	Addr      string        `yaml:"addr"`
+	Password  string        `envconfig:"REDIS_PASSWORD"`
+	DB        int           `yaml:"db"`
+	KeyPrefix string        `yaml:"key_prefix"`
+	TTL       time.Duration `yaml:"ttl"`
 }
 
 func (c *Config) GetLevel() slog.Level {
@@ -58,7 +63,9 @@ func (c *Config) GetLevel() slog.Level {
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("bot config: load .env: %w", err)
+	}
 
 	data, err := os.ReadFile("cmd/bot/config.yaml")
 	if err != nil {

@@ -3,124 +3,83 @@ package application
 import (
 	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application/mocks"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
 
-type schedulerRepoStub struct {
-	mu             sync.Mutex
-	links          []domain.SubscribedLink
-	updateCalls    int
-	updateErrByURL map[string]error
+func expectListLinks(repo *mocks.MockSchedulerLinks, links []domain.SubscribedLink) {
+	repo.EXPECT().
+		ListSubscribedLinks(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, limit, offset int) ([]domain.SubscribedLink, error) {
+			if offset >= len(links) {
+				return nil, nil
+			}
+			end := offset + limit
+			if end > len(links) {
+				end = len(links)
+			}
+			out := make([]domain.SubscribedLink, end-offset)
+			copy(out, links[offset:end])
+			return out, nil
+		}).
+		AnyTimes()
 }
 
-func (r *schedulerRepoStub) ListSubscribedLinks(_ context.Context, limit, offset int) ([]domain.SubscribedLink, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if offset >= len(r.links) {
-		return nil, nil
-	}
-	end := offset + limit
-	if end > len(r.links) {
-		end = len(r.links)
-	}
-	out := make([]domain.SubscribedLink, end-offset)
-	copy(out, r.links[offset:end])
-	return out, nil
-}
-
-func (r *schedulerRepoStub) UpdateLinkUpdatedAt(_ context.Context, _ int64, linkURL string, _ time.Time) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.updateCalls++
-	if r.updateErrByURL != nil {
-		if err, ok := r.updateErrByURL[linkURL]; ok {
-			return err
-		}
-	}
-	return nil
-}
-
-type schedulerCheckerStub struct {
-	mu            sync.Mutex
-	checkCalls    int
-	changedByURL  map[string]bool
-	errByURL      map[string]error
-	notifyAtCount map[int]chan struct{}
-}
-
-func (c *schedulerCheckerStub) Check(_ context.Context, link domain.Link) (domain.LinkCheckOutcome, error) {
-	c.mu.Lock()
-	c.checkCalls++
-	call := c.checkCalls
-	err := error(nil)
-	changed := false
-	if c.errByURL != nil {
-		err = c.errByURL[link.URL]
-	}
-	if c.changedByURL != nil {
-		changed = c.changedByURL[link.URL]
-	}
-	ch := c.notifyAtCount[call]
-	c.mu.Unlock()
-	if ch != nil {
-		close(ch)
-	}
-	if err != nil {
-		return domain.LinkCheckOutcome{}, err
-	}
-	return domain.LinkCheckOutcome{
-		Changed:     changed,
-		Latest:      time.Now(),
-		Description: "test update",
-	}, nil
-}
-
-type schedulerNotifierStub struct {
-	mu                    sync.Mutex
-	notifyCalls           int
-	notifyFailedLinksCall int
-	notifyErrByURL        map[string]error
-}
-
-func (n *schedulerNotifierStub) Notify(_ context.Context, _ int64, link domain.Link, _, _ string) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.notifyCalls++
-	if n.notifyErrByURL != nil {
-		if err, ok := n.notifyErrByURL[link.URL]; ok {
-			return err
-		}
-	}
-	return nil
-}
-
-func (n *schedulerNotifierStub) NotifyFailedLinks(_ context.Context, _ int64, _ []string) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.notifyFailedLinksCall++
-	return nil
+func expectChecker(
+	checker *mocks.MockLinkChecker,
+	changedByURL map[string]bool,
+	errByURL map[string]error,
+	notifyAtCount map[int]chan struct{},
+) {
+	var calls atomic.Int32
+	checker.EXPECT().Check(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, link domain.Link) (domain.LinkCheckOutcome, error) {
+			n := calls.Add(1)
+			if ch := notifyAtCount[int(n)]; ch != nil {
+				close(ch)
+			}
+			if errByURL != nil {
+				if e, ok := errByURL[link.URL]; ok {
+					return domain.LinkCheckOutcome{}, e
+				}
+			}
+			changed := false
+			if changedByURL != nil {
+				changed = changedByURL[link.URL]
+			}
+			return domain.LinkCheckOutcome{
+				Changed:     changed,
+				Latest:      time.Now(),
+				Description: "test update",
+			}, nil
+		},
+	).AnyTimes()
 }
 
 func TestScheduler_Run_StartsWorkersOnce(t *testing.T) {
-	repo := &schedulerRepoStub{
-		links: []domain.SubscribedLink{
-			{ChatID: 1, Link: domain.Link{URL: "https://example.com/1"}},
-			{ChatID: 1, Link: domain.Link{URL: "https://example.com/2"}},
-		},
+	ctrl := gomock.NewController(t)
+
+	baseline := time.Unix(1, 0).UTC()
+	links := []domain.SubscribedLink{
+		{ChatID: 1, Link: domain.Link{URL: "https://example.com/1", LastUpdated: baseline}},
+		{ChatID: 1, Link: domain.Link{URL: "https://example.com/2", LastUpdated: baseline}},
 	}
-	checker := &schedulerCheckerStub{
-		changedByURL: map[string]bool{
-			"https://example.com/1": false,
-			"https://example.com/2": false,
-		},
-	}
-	notifier := &schedulerNotifierStub{}
+	repo := mocks.NewMockSchedulerLinks(ctrl)
+	checker := mocks.NewMockLinkChecker(ctrl)
+	notifier := mocks.NewMockBotNotifier(ctrl)
+
+	expectListLinks(repo, links)
+	expectChecker(checker, map[string]bool{
+		"https://example.com/1": false,
+		"https://example.com/2": false,
+	}, nil, nil)
 
 	s := NewScheduler(repo, checker, notifier, 100, 3, 200*time.Millisecond)
 	var started int32
@@ -147,26 +106,35 @@ func TestScheduler_Run_StartsWorkersOnce(t *testing.T) {
 }
 
 func TestScheduler_Run_ProcessesTasks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	baseline := time.Unix(1, 0).UTC()
-	repo := &schedulerRepoStub{
-		links: []domain.SubscribedLink{
-			{ChatID: 10, Link: domain.Link{URL: "https://example.com/a", LastUpdated: baseline}},
-			{ChatID: 11, Link: domain.Link{URL: "https://example.com/b", LastUpdated: baseline}},
-		},
+	links := []domain.SubscribedLink{
+		{ChatID: 10, Link: domain.Link{URL: "https://example.com/a", LastUpdated: baseline}},
+		{ChatID: 11, Link: domain.Link{URL: "https://example.com/b", LastUpdated: baseline}},
 	}
+	repo := mocks.NewMockSchedulerLinks(ctrl)
+	checker := mocks.NewMockLinkChecker(ctrl)
+	notifier := mocks.NewMockBotNotifier(ctrl)
+
+	expectListLinks(repo, links)
 	first := make(chan struct{})
 	second := make(chan struct{})
-	checker := &schedulerCheckerStub{
-		changedByURL: map[string]bool{
-			"https://example.com/a": true,
-			"https://example.com/b": false,
-		},
-		notifyAtCount: map[int]chan struct{}{
-			1: first,
-			2: second,
-		},
-	}
-	notifier := &schedulerNotifierStub{}
+	expectChecker(checker, map[string]bool{
+		"https://example.com/a": true,
+		"https://example.com/b": false,
+	}, nil, map[int]chan struct{}{
+		1: first,
+		2: second,
+	})
+	notifier.EXPECT().
+		Notify(gomock.Any(), int64(10), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).
+		Times(1)
+	repo.EXPECT().
+		UpdateLinkUpdatedAt(gomock.Any(), int64(10), "https://example.com/a", gomock.Any()).
+		Return(nil).
+		Times(1)
 
 	s := NewScheduler(repo, checker, notifier, 100, 2, 24*time.Hour)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -192,26 +160,17 @@ func TestScheduler_Run_ProcessesTasks(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("scheduler did not stop")
 	}
-
-	checker.mu.Lock()
-	checkCalls := checker.checkCalls
-	checker.mu.Unlock()
-	notifier.mu.Lock()
-	notifyCalls := notifier.notifyCalls
-	notifier.mu.Unlock()
-	repo.mu.Lock()
-	updateCalls := repo.updateCalls
-	repo.mu.Unlock()
-
-	require.GreaterOrEqual(t, checkCalls, 2)
-	require.Equal(t, 1, notifyCalls)
-	require.Equal(t, 1, updateCalls)
 }
 
 func TestScheduler_Run_ShutdownOnCancel(t *testing.T) {
-	repo := &schedulerRepoStub{}
-	checker := &schedulerCheckerStub{}
-	notifier := &schedulerNotifierStub{}
+	ctrl := gomock.NewController(t)
+
+	repo := mocks.NewMockSchedulerLinks(ctrl)
+	checker := mocks.NewMockLinkChecker(ctrl)
+	notifier := mocks.NewMockBotNotifier(ctrl)
+
+	expectListLinks(repo, nil)
+
 	s := NewScheduler(repo, checker, notifier, 100, 2, time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -230,32 +189,39 @@ func TestScheduler_Run_ShutdownOnCancel(t *testing.T) {
 }
 
 func TestScheduler_Run_ErrorsDoNotPanic(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	baseline := time.Unix(1, 0).UTC()
-	repo := &schedulerRepoStub{
-		links: []domain.SubscribedLink{
-			{ChatID: 1, Link: domain.Link{URL: "https://example.com/check-err", LastUpdated: baseline}},
-			{ChatID: 1, Link: domain.Link{URL: "https://example.com/notify-err", LastUpdated: baseline}},
-			{ChatID: 1, Link: domain.Link{URL: "https://example.com/repo-err", LastUpdated: baseline}},
-		},
-		updateErrByURL: map[string]error{
-			"https://example.com/repo-err": errors.New("repo error"),
-		},
+	links := []domain.SubscribedLink{
+		{ChatID: 1, Link: domain.Link{URL: "https://example.com/check-err", LastUpdated: baseline}},
+		{ChatID: 1, Link: domain.Link{URL: "https://example.com/notify-err", LastUpdated: baseline}},
+		{ChatID: 1, Link: domain.Link{URL: "https://example.com/repo-err", LastUpdated: baseline}},
 	}
-	checker := &schedulerCheckerStub{
-		changedByURL: map[string]bool{
-			"https://example.com/check-err":  false,
-			"https://example.com/notify-err": true,
-			"https://example.com/repo-err":   true,
-		},
-		errByURL: map[string]error{
-			"https://example.com/check-err": errors.New("checker error"),
-		},
-	}
-	notifier := &schedulerNotifierStub{
-		notifyErrByURL: map[string]error{
-			"https://example.com/notify-err": errors.New("notify error"),
-		},
-	}
+	repo := mocks.NewMockSchedulerLinks(ctrl)
+	checker := mocks.NewMockLinkChecker(ctrl)
+	notifier := mocks.NewMockBotNotifier(ctrl)
+
+	expectListLinks(repo, links)
+	expectChecker(checker, map[string]bool{
+		"https://example.com/check-err":  false,
+		"https://example.com/notify-err": true,
+		"https://example.com/repo-err":   true,
+	}, map[string]error{
+		"https://example.com/check-err": errors.New("checker error"),
+	}, nil)
+	notifier.EXPECT().
+		Notify(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(errors.New("notify error")).
+		AnyTimes()
+	notifier.EXPECT().
+		NotifyFailedLinks(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
+	repo.EXPECT().
+		UpdateLinkUpdatedAt(gomock.Any(), gomock.Any(), "https://example.com/repo-err", gomock.Any()).
+		Return(errors.New("repo error")).
+		AnyTimes()
+
 	s := NewScheduler(repo, checker, notifier, 100, 2, 24*time.Hour)
 
 	ctx, cancel := context.WithCancel(context.Background())

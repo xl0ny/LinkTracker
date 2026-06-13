@@ -14,9 +14,12 @@ import (
 )
 
 const (
-	defaultHTTPTimeout = 30 * time.Second
-	defaultCBInterval  = 10 * time.Second
-	failureRatePercent = 100
+	defaultHTTPTimeout       = 30 * time.Second
+	defaultCBInterval        = 10 * time.Second
+	defaultCBSlidingWindow   = 10
+	defaultCBMaxHalfOpen     = 5
+	defaultCBWaitInOpenState = time.Second
+	failureRatePercent       = 100
 
 	backoffConstant    = "constant"
 	backoffExponential = "exponential"
@@ -146,7 +149,7 @@ func (t cbRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 func newCircuitBreaker(name string, cfg CircuitBreakerConfig) *gobreaker.CircuitBreaker {
 	window := cfg.SlidingWindowSize
 	if window == 0 {
-		window = 10
+		window = defaultCBSlidingWindow
 	}
 	minCalls := cfg.MinimumRequiredCalls
 	if minCalls == 0 {
@@ -155,11 +158,11 @@ func newCircuitBreaker(name string, cfg CircuitBreakerConfig) *gobreaker.Circuit
 	threshold := cfg.FailureRateThreshold
 	maxHalfOpen := cfg.PermittedCallsInHalfOpenState
 	if maxHalfOpen == 0 {
-		maxHalfOpen = 5
+		maxHalfOpen = defaultCBMaxHalfOpen
 	}
 	waitOpen := cfg.WaitDurationInOpenState
 	if waitOpen <= 0 {
-		waitOpen = time.Second
+		waitOpen = defaultCBWaitInOpenState
 	}
 
 	interval := time.Duration(window) * time.Second

@@ -26,7 +26,7 @@ func TestBuildNotifier_kafkaDisabledUsesHTTPNotifier(t *testing.T) {
 	require.NoError(t, err)
 
 	var cfg config.Config
-	cfg.Kafka.Kafka.Enabled = false
+	cfg.Kafka.Cluster.Enabled = false
 
 	n, p, err := buildNotifier(context.Background(), nil, api, &cfg, testScrapperMetrics())
 	require.NoError(t, err)
@@ -41,15 +41,15 @@ func TestBuildNotifier_kafkaEnabledUsesHTTPWithFallback(t *testing.T) {
 	require.NoError(t, err)
 
 	var cfg config.Config
-	cfg.Kafka.Kafka.Enabled = true
+	cfg.Kafka.Cluster.Enabled = true
 	cfg.Kafka.Producer.Mode = kafkaProducerModeDirect
-	cfg.Kafka.Kafka.Brokers = []string{"localhost:19092"}
-	cfg.Kafka.Kafka.RawUpdatesTopic = "link.raw-updates"
-	cfg.Kafka.Kafka.FailedLinksTopic = "failed-links"
-	cfg.Kafka.Kafka.DLQTopic = "link.raw-updates-dlq"
-	cfg.Kafka.Kafka.SchemaRegistryURL = "http://localhost:18081"
-	cfg.Kafka.Kafka.RawUpdateSubject = "link-raw-update-event-value"
-	cfg.Kafka.Kafka.FailedSubject = "failed-links-event-value"
+	cfg.Kafka.Cluster.Brokers = []string{"localhost:19092"}
+	cfg.Kafka.Cluster.RawUpdatesTopic = "link.raw-updates"
+	cfg.Kafka.Cluster.FailedLinksTopic = "failed-links"
+	cfg.Kafka.Cluster.DLQTopic = "link.raw-updates-dlq"
+	cfg.Kafka.Cluster.SchemaRegistryURL = "http://localhost:18081"
+	cfg.Kafka.Cluster.RawUpdateSubject = "link-raw-update-event-value"
+	cfg.Kafka.Cluster.FailedSubject = "failed-links-event-value"
 	cfg.Kafka.Producer.ProducerClient = "test"
 	cfg.Kafka.Producer.WriteTimeout = time.Second
 	cfg.Kafka.Producer.RequiredACK = -1

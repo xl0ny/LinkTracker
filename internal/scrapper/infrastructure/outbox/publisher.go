@@ -24,9 +24,9 @@ type PublisherRepository interface {
 }
 
 type Publisher struct {
-	repo   PublisherRepository
-	writer *kafkago.Writer
-	m      *prometrics.ScrapperMetrics
+	repo    PublisherRepository
+	writers map[string]*kafkago.Writer
+	m       *prometrics.ScrapperMetrics
 
 	pollInterval time.Duration
 	batchSize    int
@@ -38,16 +38,22 @@ type Publisher struct {
 
 func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.KafkaProducer, ocfg config.KafkaOutbox, m *prometrics.ScrapperMetrics) *Publisher {
 	dialer := &kafkago.Dialer{ClientID: pcfg.ProducerClient}
-	writer := kafkago.NewWriter(kafkago.WriterConfig{
-		Brokers:      kcfg.Brokers,
-		WriteTimeout: pcfg.WriteTimeout,
-		RequiredAcks: pcfg.RequiredACK,
-		MaxAttempts:  pcfg.MaxAttempts,
-		Dialer:       dialer,
-	})
+	newWriter := func(topic string) *kafkago.Writer {
+		return kafkago.NewWriter(kafkago.WriterConfig{
+			Brokers:      kcfg.Brokers,
+			Topic:        topic,
+			WriteTimeout: pcfg.WriteTimeout,
+			RequiredAcks: pcfg.RequiredACK,
+			MaxAttempts:  pcfg.MaxAttempts,
+			Dialer:       dialer,
+		})
+	}
 	return &Publisher{
-		repo:         repo,
-		writer:       writer,
+		repo: repo,
+		writers: map[string]*kafkago.Writer{
+			kcfg.RawUpdatesTopic:  newWriter(kcfg.RawUpdatesTopic),
+			kcfg.FailedLinksTopic: newWriter(kcfg.FailedLinksTopic),
+		},
 		m:            m,
 		pollInterval: ocfg.PollInterval,
 		batchSize:    ocfg.BatchSize,
@@ -59,10 +65,13 @@ func NewPublisher(repo PublisherRepository, kcfg config.Kafka, pcfg config.Kafka
 }
 
 func (p *Publisher) Close() error {
-	if err := p.writer.Close(); err != nil {
-		return fmt.Errorf("outbox-publisher: close writer: %w", err)
+	var errs []error
+	for topic, w := range p.writers {
+		if err := w.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("outbox-publisher: close writer %q: %w", topic, err))
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (p *Publisher) Run(ctx context.Context) {
@@ -94,9 +103,16 @@ func (p *Publisher) processBatch(ctx context.Context) {
 }
 
 func (p *Publisher) publishOne(ctx context.Context, e domain.OutboxEvent) {
+	writer, ok := p.writers[e.Topic]
+	if !ok {
+		slog.Error("outbox-publisher: unknown topic",
+			slog.String("topic", e.Topic),
+			slog.Int64("id", e.ID),
+		)
+		return
+	}
 	start := time.Now()
-	wErr := p.writer.WriteMessages(ctx, kafkago.Message{
-		Topic: e.Topic,
+	wErr := writer.WriteMessages(ctx, kafkago.Message{
 		Key:   e.Key,
 		Value: e.Payload,
 	})

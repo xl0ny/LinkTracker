@@ -49,6 +49,7 @@ var (
 
 const kafkaProducerModeDirect = "direct"
 
+//nolint:funlen // Точка сборки scrapper все намеренно в одной функции.
 func Run(ctx context.Context, cfg *config.Config) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -190,7 +191,7 @@ func buildNotifier(
 	m *prometrics.ScrapperMetrics,
 ) (application.BotNotifier, *outbox.Publisher, error) {
 	primary := botclient.NewNotifier(botAPI)
-	if !cfg.Kafka.Kafka.Enabled {
+	if !cfg.Kafka.Cluster.Enabled {
 		return primary, nil, nil
 	}
 
@@ -200,7 +201,7 @@ func buildNotifier(
 	}
 	switch mode {
 	case kafkaProducerModeDirect:
-		fallback, err := kafka.NewNotifier(ctx, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer, m)
+		fallback, err := kafka.NewNotifier(ctx, cfg.Kafka.Cluster, cfg.Kafka.Producer.KafkaProducer, m)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scrapper: kafka notifier: %w", err)
 		}
@@ -211,11 +212,11 @@ func buildNotifier(
 		if !okWrite || !okPoll {
 			return nil, nil, errors.New("scrapper: outbox mode requires a repository with outbox support (use access_type=SQL)")
 		}
-		fallback, err := outbox.NewNotifier(ctx, writeRepo, cfg.Kafka.Kafka)
+		fallback, err := outbox.NewNotifier(ctx, writeRepo, cfg.Kafka.Cluster)
 		if err != nil {
 			return nil, nil, fmt.Errorf("scrapper: outbox notifier: %w", err)
 		}
-		publisher := outbox.NewPublisher(pollRepo, cfg.Kafka.Kafka, cfg.Kafka.Producer.KafkaProducer, cfg.Kafka.Producer.Outbox, m)
+		publisher := outbox.NewPublisher(pollRepo, cfg.Kafka.Cluster, cfg.Kafka.Producer.KafkaProducer, cfg.Kafka.Producer.Outbox, m)
 		return notifier.NewFallback(primary, fallback), publisher, nil
 	default:
 		return nil, nil, fmt.Errorf("scrapper: unknown kafka producer mode %q (expected direct|outbox)", cfg.Kafka.Producer.Mode)

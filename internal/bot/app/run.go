@@ -152,19 +152,13 @@ func attachKafkaConsumer(
 	m *prometrics.Bot,
 ) (cleanup func(), err error) {
 	cleanup = func() {}
-	if !cfg.Kafka.Kafka.Enabled {
+	if !cfg.Kafka.Cluster.Enabled {
 		return cleanup, nil
 	}
 
 	var idem kafka.IdempotencyStore
 	if cfg.Redis.Enabled {
-		redisStore := botredis.New(botredis.Config{
-			Addr:      cfg.Redis.Addr,
-			Password:  cfg.Redis.Password,
-			DB:        cfg.Redis.DB,
-			KeyPrefix: cfg.Redis.KeyPrefix,
-			TTL:       cfg.Redis.TTL,
-		})
+		redisStore := botredis.New(cfg.Redis)
 		if perr := redisStore.Ping(ctx); perr != nil {
 			return nil, fmt.Errorf("bot run: redis ping: %w", perr)
 		}
@@ -178,7 +172,7 @@ func attachKafkaConsumer(
 		idem = redisStore
 	}
 
-	kafkaConsumer, kerr := kafka.NewConsumer(cfg.Kafka.Kafka, cfg.Kafka.Consumer.KafkaConsumer, sender, idem, m)
+	kafkaConsumer, kerr := kafka.NewConsumer(cfg.Kafka.Cluster, cfg.Kafka.Consumer.KafkaConsumer, sender, idem, m)
 	if kerr != nil {
 		cleanup()
 		return nil, fmt.Errorf("bot run: kafka consumer: %w", kerr)

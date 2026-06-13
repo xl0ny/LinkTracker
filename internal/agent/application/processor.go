@@ -24,10 +24,10 @@ func NewProcessor(filter *Filter, summarizer Summarizer, threshold int, prioriti
 }
 
 // Process выполняет фильтрацию и суммаризацию.
-// Возвращает (processed, true, nil), если событие готово к публикации,
-// (zero, false, nil), если отфильтровано.
-// Ошибка возвращается только при фатальном сбое; ошибка суммаризатора деградирует до исходного текста.
-func (p *Processor) Process(ctx context.Context, raw domain.RawUpdate) (domain.ProcessedUpdate, bool, error) {
+// Возвращает (processed, true) если событие готово к публикации,
+// (zero, false) — если отфильтровано.
+// Ошибка суммаризатора деградирует до original-текста.
+func (p *Processor) Process(ctx context.Context, raw domain.RawUpdate) (domain.ProcessedUpdate, bool) {
 	if reason := p.filter.Decide(raw); reason != SkipNone {
 		slog.Info("agent: update filtered",
 			slog.String("event_id", raw.EventID),
@@ -35,7 +35,7 @@ func (p *Processor) Process(ctx context.Context, raw domain.RawUpdate) (domain.P
 			slog.String("author", raw.Author),
 			slog.String("url", raw.URL),
 		)
-		return domain.ProcessedUpdate{}, false, nil
+		return domain.ProcessedUpdate{}, false
 	}
 
 	description := raw.Description
@@ -63,5 +63,5 @@ func (p *Processor) Process(ctx context.Context, raw domain.RawUpdate) (domain.P
 		Description: description,
 		TgChatIDs:   raw.TgChatIDs,
 		Priority:    priority,
-	}, true, nil
+	}, true
 }

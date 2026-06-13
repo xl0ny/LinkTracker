@@ -1,23 +1,16 @@
-package application
+package application_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
+	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/mocks"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
-
-type fakeCmd struct {
-	name, desc, reply string
-}
-
-func (f fakeCmd) Name() string { return f.name }
-
-func (f fakeCmd) Description() string { return f.desc }
-
-func (f fakeCmd) Handle(domain.Action) (string, error) { return f.reply, nil }
 
 type fakePlain struct {
 	action domain.Action
@@ -30,18 +23,32 @@ func (f *fakePlain) HandlePlainMessage(action domain.Action) (string, error) {
 }
 
 func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
-	d := NewDispatcher([]Command{fakeCmd{"start", "", "Добро пожаловать! Используйте /help для списка команд."}}, nil, NewTrackStateStore(), nil)
-	action := domain.Action{Command: "start"}
-	text, err := d.Dispatch(action)
+	ctrl := gomock.NewController(t)
+	start := mocks.NewMockCommand(ctrl)
+	start.EXPECT().Name().Return("start").AnyTimes()
+	start.EXPECT().Description().Return("").AnyTimes()
+	start.EXPECT().Handle(domain.Action{Command: "start"}).
+		Return("Добро пожаловать! Используйте /help для списка команд.", nil)
+
+	d := application.NewDispatcher([]application.Command{start}, nil, application.NewTrackStateStore(), nil)
+	text, err := d.Dispatch(domain.Action{Command: "start"})
+
 	require.NoError(t, err)
 	require.NotEmpty(t, text)
 	assert.Contains(t, text, "Добро пожаловать! Используйте /help")
 }
 
 func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
-	d := NewDispatcher([]Command{fakeCmd{"help", "", "/start\n/help"}}, nil, NewTrackStateStore(), nil)
-	action := domain.Action{Command: "help"}
-	text, err := d.Dispatch(action)
+	ctrl := gomock.NewController(t)
+	help := mocks.NewMockCommand(ctrl)
+	help.EXPECT().Name().Return("help").AnyTimes()
+	help.EXPECT().Description().Return("").AnyTimes()
+	help.EXPECT().Handle(domain.Action{Command: "help"}).
+		Return("/start\n/help", nil)
+
+	d := application.NewDispatcher([]application.Command{help}, nil, application.NewTrackStateStore(), nil)
+	text, err := d.Dispatch(domain.Action{Command: "help"})
+
 	require.NoError(t, err)
 	require.NotEmpty(t, text)
 	assert.Contains(t, text, "/start")
@@ -49,9 +56,9 @@ func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
-	d := NewDispatcher([]Command{}, nil, NewTrackStateStore(), nil)
-	action := domain.Action{Command: "unknowncommand"}
-	text, err := d.Dispatch(action)
+	d := application.NewDispatcher([]application.Command{}, nil, application.NewTrackStateStore(), nil)
+	text, err := d.Dispatch(domain.Action{Command: "unknowncommand"})
+
 	require.NoError(t, err)
 	require.NotEmpty(t, text)
 	assert.Contains(t, text, "Неизвестная команда")
@@ -59,18 +66,18 @@ func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
 }
 
 func TestDispatcher_Dispatch_emptyCommand_noResponse(t *testing.T) {
-	d := NewDispatcher([]Command{}, nil, NewTrackStateStore(), nil)
-	action := domain.Action{Command: ""}
-	text, err := d.Dispatch(action)
+	d := application.NewDispatcher([]application.Command{}, nil, application.NewTrackStateStore(), nil)
+	text, err := d.Dispatch(domain.Action{Command: ""})
+
 	require.NoError(t, err)
 	assert.Empty(t, text)
 }
 
 func TestDispatcher_Dispatch_commandDuringTrackFlow_goesToPlainHandler(t *testing.T) {
-	state := NewTrackStateStore()
-	state.Set(42, &TrackState{Phase: TrackPhaseTags, Link: "https://github.com/openai/codex"})
+	state := application.NewTrackStateStore()
+	state.Set(42, &application.TrackState{Phase: application.TrackPhaseTags, Link: "https://github.com/openai/codex"})
 	plain := &fakePlain{reply: "Ссылка добавлена в отслеживание"}
-	d := NewDispatcher(nil, plain, state, nil)
+	d := application.NewDispatcher(nil, plain, state, nil)
 
 	text, err := d.Dispatch(domain.Action{ChatID: 42, Command: "skip", Text: "/skip"})
 

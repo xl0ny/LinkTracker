@@ -130,7 +130,8 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 	defer cancel()
 	go grouper.Run(rctx)
 
-	consumer, err := NewConsumer(kcfg, ccfg, processor, grouper)
+	handler := application.NewUpdateHandler(processor, grouper)
+	consumer, err := NewConsumer(kcfg, ccfg, handler)
 	require.NoError(t, err)
 	defer func() { _ = consumer.Close() }()
 
@@ -288,7 +289,8 @@ func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
 	defer cancel()
 	go grouper.Run(runCtx)
 
-	consumer, err := NewConsumer(kcfg, ccfg, processor, grouper)
+	handler := application.NewUpdateHandler(processor, grouper)
+	consumer, err := NewConsumer(kcfg, ccfg, handler)
 	require.NoError(t, err)
 	defer func() { _ = consumer.Close() }()
 

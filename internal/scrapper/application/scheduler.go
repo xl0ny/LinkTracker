@@ -12,7 +12,7 @@ import (
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 )
 
-type linkChecker interface {
+type LinkChecker interface {
 	Check(ctx context.Context, link domain.Link) (domain.LinkCheckOutcome, error)
 }
 
@@ -32,7 +32,7 @@ type TxRunner interface {
 
 type Scheduler struct {
 	repo        SchedulerLinks
-	linkChecker linkChecker
+	linkChecker LinkChecker
 	botNotifier BotNotifier
 	txRunner    TxRunner
 	batchSize   int
@@ -49,7 +49,7 @@ type Scheduler struct {
 
 func NewScheduler(
 	repo SchedulerLinks,
-	lc linkChecker,
+	lc LinkChecker,
 	bn BotNotifier,
 	batchSize, workers int,
 	interval time.Duration,

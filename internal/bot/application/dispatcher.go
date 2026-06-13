@@ -1,3 +1,4 @@
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mocks.go -package=mocks . Command
 package application
 
 import (

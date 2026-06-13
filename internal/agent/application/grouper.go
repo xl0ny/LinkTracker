@@ -2,8 +2,8 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,11 +15,14 @@ type UpdatePublisher interface {
 	Publish(ctx context.Context, u domain.ProcessedUpdate) error
 }
 
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mocks.go -package=mocks . UpdatePublisher,Summarizer
+
 type GrouperConfig struct {
 	Window time.Duration
 }
 
 type chatGroup struct {
+	ctx   context.Context
 	items []domain.ProcessedUpdate
 	timer *time.Timer
 }
@@ -41,11 +44,11 @@ func NewGrouper(publisher UpdatePublisher, cfg GrouperConfig) *Grouper {
 }
 
 // Publish ставит обновление в буфер группировки по каждому tgChatId.
-func (g *Grouper) Publish(_ context.Context, update domain.ProcessedUpdate) error {
+func (g *Grouper) Publish(ctx context.Context, update domain.ProcessedUpdate) error {
 	for _, chatID := range update.TgChatIDs {
 		single := update
 		single.TgChatIDs = []int64{chatID}
-		g.enqueue(chatID, single)
+		g.enqueue(ctx, chatID, single)
 	}
 	return nil
 }
@@ -56,13 +59,13 @@ func (g *Grouper) Run(ctx context.Context) {
 	g.flushAll(ctx)
 }
 
-func (g *Grouper) enqueue(chatID int64, update domain.ProcessedUpdate) {
+func (g *Grouper) enqueue(ctx context.Context, chatID int64, update domain.ProcessedUpdate) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	grp, ok := g.groups[chatID]
 	if !ok {
-		grp = &chatGroup{}
+		grp = &chatGroup{ctx: ctx}
 		g.groups[chatID] = grp
 		grp.timer = time.AfterFunc(g.window, func() {
 			g.flushChat(chatID)
@@ -79,13 +82,14 @@ func (g *Grouper) flushChat(chatID int64) {
 		return
 	}
 	items := grp.items
+	ctx := grp.ctx
 	if grp.timer != nil {
 		grp.timer.Stop()
 	}
 	delete(g.groups, chatID)
 	g.mu.Unlock()
 
-	g.publishGroup(context.Background(), items)
+	g.publishGroup(ctx, items)
 }
 
 func (g *Grouper) flushAll(ctx context.Context) {
@@ -129,7 +133,9 @@ func mergeGroupedUpdates(items []domain.ProcessedUpdate) domain.ProcessedUpdate 
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		fmt.Fprintf(&b, "%d. %s", i+1, item.Description)
+		b.WriteString(strconv.Itoa(i + 1))
+		b.WriteString(". ")
+		b.WriteString(item.Description)
 		priority = maxPriority(priority, item.Priority)
 	}
 	return domain.ProcessedUpdate{

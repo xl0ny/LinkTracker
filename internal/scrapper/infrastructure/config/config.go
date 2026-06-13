@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -42,13 +43,7 @@ type Config struct {
 		Mode string `yaml:"mode"`
 	} `yaml:"logging"`
 
-	Kafka struct {
-		config.Kafka `yaml:",inline"`
-		Producer     struct {
-			config.KafkaProducer `yaml:",inline"`
-			Outbox               config.KafkaOutbox `yaml:"outbox"`
-		} `yaml:"producer"`
-	} `yaml:"kafka"`
+	Kafka KafkaSettings `yaml:"kafka"`
 
 	Resilience resilience.Config `yaml:"resilience"`
 
@@ -75,6 +70,14 @@ type Config struct {
 	} `yaml:"valkey"`
 }
 
+type KafkaSettings struct {
+	Cluster  config.Kafka `yaml:",inline"`
+	Producer struct {
+		config.KafkaProducer `yaml:",inline"`
+		Outbox               config.KafkaOutbox `yaml:"outbox"`
+	} `yaml:"producer"`
+}
+
 func (c *Config) GetLevel() slog.Level {
 	return logging.LevelFromMode(c.Logging.Mode)
 }
@@ -91,7 +94,9 @@ func (c *Config) PostgresDSN() string {
 }
 
 func Load() (*Config, error) {
-	_ = godotenv.Load()
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("scrapper config: load .env: %w", err)
+	}
 
 	data, err := os.ReadFile("cmd/scrapper/config.yaml")
 	if err != nil {

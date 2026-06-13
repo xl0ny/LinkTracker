@@ -68,9 +68,9 @@ resilience:
   circuit_breaker:
     sliding_window_size: 10
     minimum_required_calls: 5
-    failure_rate_threshold: 100
+    failure_rate_threshold: 50
     permitted_calls_in_half_open_state: 5
-    wait_duration_in_open_state: "1s"
+    wait_duration_in_open_state: "30s"
   rate_limit:
     rps: 20
     burst: 40
