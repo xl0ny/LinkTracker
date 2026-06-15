@@ -1,5 +1,4 @@
-# bot_url: "http://localhost:8081"
-bot_url: "http://localhost:9999"   # для проверки agent-а, чтобы был fallback на kafka
+bot_url: "http://localhost:8081"
 port: "8080"
 
 metrics:
@@ -58,7 +57,7 @@ kafka:
 
 resilience:
   http:
-    timeout: "5s"
+    timeout: "15s"
   retry:
     max_attempts: 3
     delay: "200ms"
