@@ -5,27 +5,104 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStub_TruncatesLongText(t *testing.T) {
-	s := NewStub(10)
-	out, err := s.Summarize(context.Background(), "abcdefghijKLMNOP")
-	require.NoError(t, err)
-	require.Equal(t, "abcdefghij...", out)
+	tests := []struct {
+		name     string
+		limit    int
+		input    string
+		expected string
+		wantErr  bool
+	}{
+		{
+			name:     "truncates long text",
+			limit:    10,
+			input:    "abcdefghijKLMNOP",
+			expected: "abcdefghij...",
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewStub(tt.limit)
+
+			out, err := s.Summarize(context.Background(), tt.input)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, out)
+		})
+	}
 }
 
 func TestStub_KeepsShortText(t *testing.T) {
-	s := NewStub(50)
-	in := "short text"
-	out, err := s.Summarize(context.Background(), in)
-	require.NoError(t, err)
-	require.Equal(t, in, out)
+	tests := []struct {
+		name     string
+		limit    int
+		input    string
+		expected string
+		wantErr  bool
+	}{
+		{
+			name:     "keeps short text",
+			limit:    50,
+			input:    "short text",
+			expected: "short text",
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewStub(tt.limit)
+
+			out, err := s.Summarize(context.Background(), tt.input)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, out)
+		})
+	}
 }
 
 func TestStub_RuneSafeCut(t *testing.T) {
-	s := NewStub(3)
-	out, err := s.Summarize(context.Background(), strings.Repeat("ё", 10))
-	require.NoError(t, err)
-	require.Equal(t, "ёёё...", out)
+	tests := []struct {
+		name     string
+		limit    int
+		input    string
+		expected string
+		wantErr  bool
+	}{
+		{
+			name:     "truncates by runes",
+			limit:    3,
+			input:    strings.Repeat("ё", 10),
+			expected: "ёёё...",
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewStub(tt.limit)
+
+			out, err := s.Summarize(context.Background(), tt.input)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, out)
+		})
+	}
 }

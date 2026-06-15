@@ -1,61 +1,96 @@
 package command
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
+	appmocks "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application/mocks"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
 
-type trackStub struct {
-	addedTags []string
-}
-
-func (s *trackStub) RegisterChat(context.Context, int64) error { return nil }
-
-func (s *trackStub) AddLink(_ context.Context, _ int64, _ string, tags []string) error {
-	s.addedTags = tags
-	return nil
-}
-
-func (s *trackStub) RemoveLink(context.Context, int64, string) error { return nil }
-
-func (s *trackStub) ListLinks(context.Context, int64, string) ([]application.LinkInfo, error) {
-	return nil, nil
-}
-
 func TestTrack_HandlePlainMessage_skipTagsWithoutSlash(t *testing.T) {
-	tracker := &trackStub{}
-	state := application.NewTrackStateStore()
-	state.Set(42, &application.TrackState{
-		Phase: application.TrackPhaseTags,
-		Link:  "https://github.com/openai/codex",
-	})
-	cmd := NewTrack(tracker, state)
+	tests := []struct {
+		name         string
+		input        string
+		expectedText string
+		expectedTags []string
+		wantErr      bool
+	}{
+		{
+			name:         "skip tags without slash",
+			input:        " skip ",
+			expectedText: "Ссылка добавлена в отслеживание",
+			expectedTags: nil,
+			wantErr:      false,
+		},
+	}
 
-	text, err := cmd.HandlePlainMessage(domain.Action{ChatID: 42, Text: " skip "})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			tracker := appmocks.NewMockLinkTracker(ctrl)
+			state := application.NewTrackStateStore()
+			state.Set(42, &application.TrackState{
+				Phase: application.TrackPhaseTags,
+				Link:  "https://github.com/openai/codex",
+			})
+			tracker.EXPECT().
+				AddLink(gomock.Any(), int64(42), "https://github.com/openai/codex", tt.expectedTags).
+				Return(nil)
+			cmd := NewTrack(tracker, state)
 
-	require.NoError(t, err)
-	assert.Equal(t, "Ссылка добавлена в отслеживание", text)
-	assert.Empty(t, tracker.addedTags)
-	assert.Nil(t, state.Get(42))
+			text, err := cmd.HandlePlainMessage(domain.Action{ChatID: 42, Text: tt.input})
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectedText, text)
+			assert.Nil(t, state.Get(42))
+		})
+	}
 }
 
 func TestTrack_HandlePlainMessage_parsesTags(t *testing.T) {
-	tracker := &trackStub{}
-	state := application.NewTrackStateStore()
-	state.Set(42, &application.TrackState{
-		Phase: application.TrackPhaseTags,
-		Link:  "https://github.com/openai/codex",
-	})
-	cmd := NewTrack(tracker, state)
+	tests := []struct {
+		name         string
+		input        string
+		expectedTags []string
+		wantErr      bool
+	}{
+		{
+			name:         "parses comma-separated tags",
+			input:        "go, review",
+			expectedTags: []string{"go", "review"},
+			wantErr:      false,
+		},
+	}
 
-	_, err := cmd.HandlePlainMessage(domain.Action{ChatID: 42, Text: "go, review"})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			tracker := appmocks.NewMockLinkTracker(ctrl)
+			state := application.NewTrackStateStore()
+			state.Set(42, &application.TrackState{
+				Phase: application.TrackPhaseTags,
+				Link:  "https://github.com/openai/codex",
+			})
+			tracker.EXPECT().
+				AddLink(gomock.Any(), int64(42), "https://github.com/openai/codex", tt.expectedTags).
+				Return(nil)
+			cmd := NewTrack(tracker, state)
 
-	require.NoError(t, err)
-	assert.Equal(t, []string{"go", "review"}, tracker.addedTags)
+			_, err := cmd.HandlePlainMessage(domain.Action{ChatID: 42, Text: tt.input})
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
 }

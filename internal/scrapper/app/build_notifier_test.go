@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
@@ -20,46 +20,62 @@ func testScrapperMetrics() *prometrics.ScrapperMetrics {
 }
 
 func TestBuildNotifier_kafkaDisabledUsesHTTPNotifier(t *testing.T) {
-	srv := httptest.NewServer(http.NotFoundHandler())
-	defer srv.Close()
-	api, err := botclient.NewClientWithResponses(srv.URL)
-	require.NoError(t, err)
+	tests := []struct{ name string }{
+		{name: "build notifier kafka disabled uses httpnotifier"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 
-	var cfg config.Config
-	cfg.Kafka.Cluster.Enabled = false
+			srv := httptest.NewServer(http.NotFoundHandler())
+			defer srv.Close()
+			api, err := botclient.NewClientWithResponses(srv.URL)
+			assert.NoError(t, err)
 
-	n, p, err := buildNotifier(context.Background(), nil, api, &cfg, testScrapperMetrics())
-	require.NoError(t, err)
-	require.Nil(t, p)
-	require.NotNil(t, n)
+			var cfg config.Config
+			cfg.Kafka.Cluster.Enabled = false
+
+			n, p, err := buildNotifier(context.Background(), nil, api, &cfg, testScrapperMetrics())
+			assert.NoError(t, err)
+			assert.Nil(t, p)
+			assert.NotNil(t, n)
+		})
+	}
 }
 
 func TestBuildNotifier_kafkaEnabledUsesHTTPWithFallback(t *testing.T) {
-	srv := httptest.NewServer(http.NotFoundHandler())
-	defer srv.Close()
-	api, err := botclient.NewClientWithResponses(srv.URL)
-	require.NoError(t, err)
-
-	var cfg config.Config
-	cfg.Kafka.Cluster.Enabled = true
-	cfg.Kafka.Producer.Mode = kafkaProducerModeDirect
-	cfg.Kafka.Cluster.Brokers = []string{"localhost:19092"}
-	cfg.Kafka.Cluster.RawUpdatesTopic = "link.raw-updates"
-	cfg.Kafka.Cluster.FailedLinksTopic = "failed-links"
-	cfg.Kafka.Cluster.DLQTopic = "link.raw-updates-dlq"
-	cfg.Kafka.Cluster.SchemaRegistryURL = "http://localhost:18081"
-	cfg.Kafka.Cluster.RawUpdateSubject = "link-raw-update-event-value"
-	cfg.Kafka.Cluster.FailedSubject = "failed-links-event-value"
-	cfg.Kafka.Producer.ProducerClient = "test"
-	cfg.Kafka.Producer.WriteTimeout = time.Second
-	cfg.Kafka.Producer.RequiredACK = -1
-	cfg.Kafka.Producer.MaxAttempts = 1
-
-	n, p, err := buildNotifier(context.Background(), nil, api, &cfg, testScrapperMetrics())
-	if err != nil {
-		t.Skip("kafka notifier init:", err)
+	tests := []struct{ name string }{
+		{name: "build notifier kafka enabled uses httpwith fallback"},
 	}
-	require.Nil(t, p)
-	_, ok := n.(*notifier.Fallback)
-	require.True(t, ok)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			srv := httptest.NewServer(http.NotFoundHandler())
+			defer srv.Close()
+			api, err := botclient.NewClientWithResponses(srv.URL)
+			assert.NoError(t, err)
+
+			var cfg config.Config
+			cfg.Kafka.Cluster.Enabled = true
+			cfg.Kafka.Producer.Mode = kafkaProducerModeDirect
+			cfg.Kafka.Cluster.Brokers = []string{"localhost:19092"}
+			cfg.Kafka.Cluster.RawUpdatesTopic = "link.raw-updates"
+			cfg.Kafka.Cluster.FailedLinksTopic = "failed-links"
+			cfg.Kafka.Cluster.DLQTopic = "link.raw-updates-dlq"
+			cfg.Kafka.Cluster.SchemaRegistryURL = "http://localhost:18081"
+			cfg.Kafka.Cluster.RawUpdateSubject = "link-raw-update-event-value"
+			cfg.Kafka.Cluster.FailedSubject = "failed-links-event-value"
+			cfg.Kafka.Producer.ProducerClient = "test"
+			cfg.Kafka.Producer.WriteTimeout = time.Second
+			cfg.Kafka.Producer.RequiredACK = -1
+			cfg.Kafka.Producer.MaxAttempts = 1
+
+			n, p, err := buildNotifier(context.Background(), nil, api, &cfg, testScrapperMetrics())
+			if err != nil {
+				t.Skip("kafka notifier init:", err)
+			}
+			assert.Nil(t, p)
+			_, ok := n.(*notifier.Fallback)
+			assert.True(t, ok)
+		})
+	}
 }

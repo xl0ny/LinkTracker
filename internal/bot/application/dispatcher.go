@@ -1,4 +1,4 @@
-//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mocks.go -package=mocks . Command
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mocks.go -package=mocks . Command,PlainMessageHandler,LinkTracker
 package application
 
 import (

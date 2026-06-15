@@ -9,105 +9,145 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCheckQuestion_NewAnswer(t *testing.T) {
-	since := time.Unix(100, 0)
-	mux := newSOMux(t, soFixture{
-		qTitle: "Как на Go?", qLastAct: 200,
-		answers: []map[string]any{{
-			"answer_id":     10,
-			"body":          "<code>fmt.Println</code>",
-			"owner":         map[string]string{"display_name": "gopher"},
-			"creation_date": 150,
-			"link":          "https://stackoverflow.com/a/10",
-		}},
-		qComments: nil,
-		aComments: map[string][]map[string]any{},
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
+	tests := []struct {
+		name string
+	}{
+		{name: "check question new answer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 
-	c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
-	out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/how", since)
-	require.NoError(t, err)
-	require.True(t, out.Changed)
-	require.Contains(t, out.Description, "Как на Go?")
-	require.Contains(t, out.Description, "gopher")
-	require.Contains(t, out.Description, "новый ответ")
-	require.Contains(t, out.Description, "Превью:")
+			since := time.Unix(100, 0)
+			mux := newSOMux(t, soFixture{
+				qTitle: "Как на Go?", qLastAct: 200,
+				answers: []map[string]any{{
+					"answer_id":     10,
+					"body":          "<code>fmt.Println</code>",
+					"owner":         map[string]string{"display_name": "gopher"},
+					"creation_date": 150,
+					"link":          "https://stackoverflow.com/a/10",
+				}},
+				qComments: nil,
+				aComments: map[string][]map[string]any{},
+			})
+			srv := httptest.NewServer(mux)
+			t.Cleanup(srv.Close)
+
+			c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
+			out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/how", since)
+			assert.NoError(t, err)
+			assert.True(t, out.Changed)
+			assert.Contains(t, out.Description, "Как на Go?")
+			assert.Contains(t, out.Description, "gopher")
+			assert.Contains(t, out.Description, "новый ответ")
+			assert.Contains(t, out.Description, "Превью:")
+		})
+	}
 }
 
 func TestCheckQuestion_NewQuestionComment(t *testing.T) {
-	since := time.Unix(100, 0)
-	mux := newSOMux(t, soFixture{
-		qTitle: "T", qLastAct: 300,
-		answers: nil,
-		qComments: []map[string]any{{
-			"comment_id":    1,
-			"body":          "спасибо",
-			"owner":         map[string]string{"display_name": "bob"},
-			"creation_date": 200,
-			"link":          "https://stackoverflow.com/questions/42/x#comment1",
-		}},
-		aComments: map[string][]map[string]any{},
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
+	tests := []struct {
+		name string
+	}{
+		{name: "check question new question comment"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 
-	c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
-	out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/x", since)
-	require.NoError(t, err)
-	require.True(t, out.Changed)
-	require.Contains(t, out.Description, "новый комментарий к вопросу")
-	require.Contains(t, out.Description, "bob")
+			since := time.Unix(100, 0)
+			mux := newSOMux(t, soFixture{
+				qTitle: "T", qLastAct: 300,
+				answers: nil,
+				qComments: []map[string]any{{
+					"comment_id":    1,
+					"body":          "спасибо",
+					"owner":         map[string]string{"display_name": "bob"},
+					"creation_date": 200,
+					"link":          "https://stackoverflow.com/questions/42/x#comment1",
+				}},
+				aComments: map[string][]map[string]any{},
+			})
+			srv := httptest.NewServer(mux)
+			t.Cleanup(srv.Close)
+
+			c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
+			out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/x", since)
+			assert.NoError(t, err)
+			assert.True(t, out.Changed)
+			assert.Contains(t, out.Description, "новый комментарий к вопросу")
+			assert.Contains(t, out.Description, "bob")
+		})
+	}
 }
 
 func TestCheckQuestion_NewAnswerComment(t *testing.T) {
-	since := time.Unix(100, 0)
-	mux := newSOMux(t, soFixture{
-		qTitle: "T", qLastAct: 400,
-		answers: []map[string]any{{
-			"answer_id":     99,
-			"body":          "old answer",
-			"owner":         map[string]string{"display_name": "a1"},
-			"creation_date": 50,
-			"link":          "https://stackoverflow.com/a/99",
-		}},
-		qComments: nil,
-		aComments: map[string][]map[string]any{
-			"99": {{
-				"comment_id":    2,
-				"body":          "уточнение к ответу",
-				"owner":         map[string]string{"display_name": "critic"},
-				"creation_date": 250,
-				"link":          "https://stackoverflow.com/questions/42/x#comment2",
-			}},
-		},
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
+	tests := []struct {
+		name string
+	}{
+		{name: "check question new answer comment"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 
-	c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
-	out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/x", since)
-	require.NoError(t, err)
-	require.True(t, out.Changed)
-	require.Contains(t, out.Description, "новый комментарий к ответу")
-	require.Contains(t, out.Description, "critic")
+			since := time.Unix(100, 0)
+			mux := newSOMux(t, soFixture{
+				qTitle: "T", qLastAct: 400,
+				answers: []map[string]any{{
+					"answer_id":     99,
+					"body":          "old answer",
+					"owner":         map[string]string{"display_name": "a1"},
+					"creation_date": 50,
+					"link":          "https://stackoverflow.com/a/99",
+				}},
+				qComments: nil,
+				aComments: map[string][]map[string]any{
+					"99": {{
+						"comment_id":    2,
+						"body":          "уточнение к ответу",
+						"owner":         map[string]string{"display_name": "critic"},
+						"creation_date": 250,
+						"link":          "https://stackoverflow.com/questions/42/x#comment2",
+					}},
+				},
+			})
+			srv := httptest.NewServer(mux)
+			t.Cleanup(srv.Close)
+
+			c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
+			out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/x", since)
+			assert.NoError(t, err)
+			assert.True(t, out.Changed)
+			assert.Contains(t, out.Description, "новый комментарий к ответу")
+			assert.Contains(t, out.Description, "critic")
+		})
+	}
 }
 
 func TestCheckQuestion_APIUnavailable(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadGateway)
-	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
+	tests := []struct {
+		name string
+	}{
+		{name: "check question apiunavailable"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 
-	c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
-	_, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/1/x", time.Time{})
-	require.Error(t, err)
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusBadGateway)
+			})
+			srv := httptest.NewServer(mux)
+			t.Cleanup(srv.Close)
+
+			c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
+			_, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/1/x", time.Time{})
+			assert.Error(t, err)
+		})
+	}
 }
 
 type soFixture struct {

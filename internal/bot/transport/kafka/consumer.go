@@ -1,5 +1,7 @@
 package kafka
 
+//go:generate go run go.uber.org/mock/mockgen -destination=mocks/mocks.go -package=mocks . MessageSender,IdempotencyStore
+
 import (
 	"context"
 	"encoding/base64"

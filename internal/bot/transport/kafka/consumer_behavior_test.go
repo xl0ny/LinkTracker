@@ -14,49 +14,79 @@ import (
 
 	"github.com/linkedin/goavro/v2"
 	"github.com/segmentio/kafka-go"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 	commonreg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/avro/registry"
 )
 
 func TestRetryBusiness_stopsAfterMaxRetries(t *testing.T) {
-	c := &Consumer{maxRetries: 3, retryDelay: time.Millisecond}
-	var calls int
-	err := c.retryBusiness(context.Background(), func(context.Context) error {
-		calls++
-		return errors.New("fail")
-	})
-	require.Error(t, err)
-	require.Equal(t, 3, calls)
+	tests := []struct {
+		name string
+	}{
+		{name: "retry business stops after max retries"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			c := &Consumer{maxRetries: 3, retryDelay: time.Millisecond}
+			var calls int
+			err := c.retryBusiness(context.Background(), func(context.Context) error {
+				calls++
+				return errors.New("fail")
+			})
+			assert.Error(t, err)
+			assert.Equal(t, 3, calls)
+		})
+	}
 }
 
 func TestDecodeUpdate_rejectsGarbageWire(t *testing.T) {
-	c := &Consumer{sr: commonreg.NewClient("http://unused.example")}
-	_, err := c.decodeUpdate(context.Background(), kafka.Message{Key: []byte("1"), Value: []byte{0xff}})
-	require.Error(t, err)
+	tests := []struct {
+		name string
+	}{
+		{name: "decode update rejects garbage wire"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			c := &Consumer{sr: commonreg.NewClient("http://unused.example")}
+			_, err := c.decodeUpdate(context.Background(), kafka.Message{Key: []byte("1"), Value: []byte{0xff}})
+			assert.Error(t, err)
+		})
+	}
 }
 
 func TestDecodeUpdate_validConfluent_payload(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
-	processedPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
-	processedSchema, err := os.ReadFile(processedPath)
-	require.NoError(t, err)
+	tests := []struct {
+		name string
+	}{
+		{name: "decode update valid confluent payload"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 
-	srv := httptest.NewServer(schemaRegistryStub(map[int]string{7: string(processedSchema)}))
-	defer srv.Close()
+			_, thisFile, _, ok := runtime.Caller(0)
+			assert.True(t, ok)
+			repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
+			processedPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
+			processedSchema, err := os.ReadFile(processedPath)
+			assert.NoError(t, err)
 
-	ctx := context.Background()
-	c := &Consumer{sr: commonreg.NewClient(srv.URL)}
+			srv := httptest.NewServer(schemaRegistryStub(map[int]string{7: string(processedSchema)}))
+			defer srv.Close()
 
-	raw, err := codecBinaryFromFixture(t, repoRoot)
-	require.NoError(t, err)
-	wire := commonreg.EncodeConfluent(7, raw)
+			ctx := context.Background()
+			c := &Consumer{sr: commonreg.NewClient(srv.URL)}
 
-	rec, err := c.decodeUpdate(ctx, kafka.Message{Key: []byte("999"), Value: wire})
-	require.NoError(t, err)
-	require.Equal(t, "hello", extractString(rec["description"]))
-	require.Equal(t, []int64{42}, extractInt64Slice(rec["tgChatIds"]))
+			raw, err := codecBinaryFromFixture(t, repoRoot)
+			assert.NoError(t, err)
+			wire := commonreg.EncodeConfluent(7, raw)
+
+			rec, err := c.decodeUpdate(ctx, kafka.Message{Key: []byte("999"), Value: wire})
+			assert.NoError(t, err)
+			assert.Equal(t, "hello", extractString(rec["description"]))
+			assert.Equal(t, []int64{42}, extractInt64Slice(rec["tgChatIds"]))
+		})
+	}
 }
 
 func codecBinaryFromFixture(t *testing.T, repoRoot string) ([]byte, error) {

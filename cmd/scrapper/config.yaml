@@ -1,4 +1,4 @@
-bot_url: "http://localhost:8081"
+bot_url: "http://localhost:18082"
 port: "8080"
 
 metrics:

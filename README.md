@@ -1,34 +1,103 @@
 # LinkTracker
 
-Telegram-бот, который отслеживает изменения на веб-страницах и информирует пользователя о них.
+Telegram-бот для отслеживания обновлений по ссылкам и отправки уведомлений в чат.
+
+[Открыть бота в Telegram](https://t.me/teducationlinktracerkbot)
+
+Проект состоит из трех сервисов:
+
+- `bot` - принимает команды Telegram и отправляет уведомления;
+- `scrapper` - хранит подписки и проверяет обновления;
+- `agent` - обрабатывает найденные обновления через AI.
+
+## Стек
+
+Go, PostgreSQL, Kafka, Schema Registry, Redis, Valkey, Prometheus, Grafana, Docker Compose.
+
+## Требования
+
+- Go
+- Docker и Docker Compose
+- Telegram bot token от [@BotFather](https://t.me/BotFather)
+
+## Настройка
+
+Создайте `.env` в корне проекта:
+
+```env
+APP_TELEGRAM_TOKEN=
+POSTGRES_PASSWORD=
+REDIS_PASSWORD=
+VALKEY_PASSWORD=
+HUGGINGFACE_TOKEN=
+```
+
 ## Запуск
 
-1. **Секреты в `.env`**:
-   - `APP_TELEGRAM_TOKEN` — от [@BotFather](https://t.me/BotFather)
-   - `POSTGRES_PASSWORD`
-   - `REDIS_PASSWORD`
-   - `VALKEY_PASSWORD`
-   - `HUGGINGFACE_TOKEN` https://huggingface.co/settings/tokens
+Полный локальный запуск:
 
-2. **Инфраструктура (Docker Compose)**
-   Postgres: `make compose-db` → `make compose-migrate`.
-   Kafka KRaft (3 брокера) + топики (`link.raw-updates`, `link.processed-updates`, `failed-links`, `*-dlq`) + Kafka UI + **Schema Registry** + Redis: `make compose-kafka`.
-   Valkey-кластер (3 ноды): `make compose-valkey`.
-   Всё разом (Postgres + миграции + Redis + Valkey + Kafka + регистрация Avro + запуск bot/scrapper/agent): `make god`.
+```bash
+make god
+```
 
-3. **Schema Registry** после поднятия кластера: схемы подтягиваются **при старте** scrapper/bot (REST `POST /subjects/.../versions`). Для ручной регистрации: `make avro-registrate` (по умолчанию `SCHEMA_REGISTRY_URL=http://localhost:18081`).
+Команда поднимает инфраструктуру, применяет миграции, регистрирует Avro-схемы и запускает `bot`, `scrapper`, `agent`.
+Мониторинг в `make god` не входит.
 
-4. **Порты**: бот HTTP — `cmd/bot/config.yaml` (`bot_port`, по умолчанию 8081), метрики бота — `metrics_port` (8011), scrapper — `cmd/scrapper/config.yaml` (`port`, 8080), AI Agent health-чек — `cmd/agent/config.yaml` (`port`, 8082).
+Запуск по частям:
 
-5. **Мониторинг** (Prometheus + Grafana): `make compose-observability` — см. [OBSERVABILITY.md](OBSERVABILITY.md). Prometheus: http://localhost:9090, Grafana: http://localhost:3000.
+```bash
+make compose-db
+make compose-migrate
+make compose-kafka
+make compose-valkey
+make avro-registrate
+make run-all
+```
 
-6. **Запуск приложений**: `make run-all` либо по одному сервису:
-   - `make run-bot`
-   - `make run-scrapper`
-   - `make run-agent`
-   Либо `make god` для запуска всего
+Отдельные сервисы:
 
+```bash
+make run-bot
+make run-scrapper
+make run-agent
+```
 
+## Тесты
 
+```bash
+make test
+make test-integration
+```
 
+Интеграционные тесты используют Testcontainers, поэтому для них нужен запущенный Docker.
 
+## Порты
+
+| Сервис | Порт |
+| --- | --- |
+| Scrapper API | `8080` |
+| Bot API | `8081` |
+| Agent health | `8082` |
+| Bot metrics | `8011` |
+| Kafka UI | `8085` |
+| Schema Registry | `18081` |
+| Prometheus | `9090` |
+| Grafana | `3000` |
+
+Мониторинг запускается отдельно:
+
+```bash
+make compose-observability
+```
+
+Подробнее: [OBSERVABILITY.md](OBSERVABILITY.md).
+
+## Структура
+
+```text
+cmd/          точки входа сервисов
+internal/     бизнес-логика
+pkg/          общие пакеты
+migrations/   миграции PostgreSQL
+schemas/      Avro-схемы Kafka-сообщений
+```
