@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
@@ -42,10 +43,10 @@ func TestDispatcher_Dispatch_start_returnsWelcomeMessage(t *testing.T) {
 			text, err := d.Dispatch(tt.action)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotEmpty(t, text)
 			for _, expected := range tt.expectedContains {
 				assert.Contains(t, text, expected)
@@ -85,10 +86,10 @@ func TestDispatcher_Dispatch_help_returnsCommandList(t *testing.T) {
 			text, err := d.Dispatch(tt.action)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotEmpty(t, text)
 			for _, expected := range tt.expectedContains {
 				assert.Contains(t, text, expected)
@@ -119,10 +120,10 @@ func TestDispatcher_Dispatch_unknownCommand_returnsErrorMessage(t *testing.T) {
 			text, err := d.Dispatch(tt.action)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotEmpty(t, text)
 			for _, expected := range tt.expectedContains {
 				assert.Contains(t, text, expected)
@@ -153,10 +154,10 @@ func TestDispatcher_Dispatch_emptyCommand_noResponse(t *testing.T) {
 			text, err := d.Dispatch(tt.action)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, text)
 		})
 	}
@@ -193,10 +194,10 @@ func TestDispatcher_Dispatch_commandDuringTrackFlow_goesToPlainHandler(t *testin
 			text, err := d.Dispatch(tt.action)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedText, text)
 		})
 	}

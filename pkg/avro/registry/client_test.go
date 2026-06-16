@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClient_RegisterAndCodecForID(t *testing.T) {
@@ -43,15 +44,15 @@ func TestClient_RegisterAndCodecForID(t *testing.T) {
 			ctx := context.Background()
 			c := NewClient(srv.URL)
 			id, err := c.RegisterSchema(ctx, "topic-value", schema)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, int32(1), id)
 
 			codec, err := c.CodecForID(ctx, 1)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			payload, err := codec.BinaryFromNative(nil, map[string]any{"n": int32(7)})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			native, _, err := codec.NativeFromBinary(payload)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			rec := native.(map[string]any)
 			assert.Equal(t, int32(7), rec["n"])
 		})
@@ -72,10 +73,10 @@ func TestNewSingleEncoder_integrationWithMockSR(t *testing.T) {
 			root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
 			schemaPath := filepath.Join(root, "schemas", "avro", "link_raw_update_event.avsc")
 			_, err := os.Stat(schemaPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			schema, err := os.ReadFile(schemaPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
@@ -92,7 +93,7 @@ func TestNewSingleEncoder_integrationWithMockSR(t *testing.T) {
 
 			ctx := context.Background()
 			enc, err := NewSingleEncoder(ctx, srv.URL, "raw-value", schemaPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			wire, err := enc.Encode(map[string]any{
 				"eventId":     "e1",
@@ -102,15 +103,15 @@ func TestNewSingleEncoder_integrationWithMockSR(t *testing.T) {
 				"author":      "",
 				"tgChatIds":   []any{},
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			sid, datum, err := DecodeConfluent(wire)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, int32(1), sid)
 			assert.Equal(t, enc.SchemaID(), sid)
 			codec, err := NewClient(srv.URL).CodecForID(ctx, 1)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			native, _, err := codec.NativeFromBinary(datum)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			rec := native.(map[string]any)
 			assert.Equal(t, "e1", rec["eventId"])
 		})

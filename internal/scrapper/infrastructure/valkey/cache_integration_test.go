@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	tc "github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
@@ -35,15 +36,15 @@ func startValkey(t *testing.T) string {
 		Started: true,
 	}
 	container, err := tc.GenericContainer(ctx, req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = tc.TerminateContainer(container)
 	})
 
 	host, err := container.Host(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	port, err := container.MappedPort(ctx, valkeyPort)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	return host + ":" + port.Port()
 }
@@ -57,7 +58,7 @@ func newCache(t *testing.T, addr string, csc bool) *cacheimpl.LinksCache {
 		ClientCache: csc,
 		CSCTTL:      time.Second,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	t.Cleanup(cache.Close)
 	return cache
 }
@@ -81,21 +82,21 @@ func TestValkeyCache_SetGetInvalidate(t *testing.T) {
 			}
 
 			got, ok, err := cache.Get(ctx, 1)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.False(t, ok)
 			assert.Nil(t, got)
 
-			assert.NoError(t, cache.Set(ctx, 1, links))
+			require.NoError(t, cache.Set(ctx, 1, links))
 
 			got, ok, err = cache.Get(ctx, 1)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, ok)
 			assert.Equal(t, links, got)
 
-			assert.NoError(t, cache.Invalidate(ctx, 1))
+			require.NoError(t, cache.Invalidate(ctx, 1))
 
 			got, ok, err = cache.Get(ctx, 1)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.False(t, ok)
 			assert.Nil(t, got)
 		})
@@ -116,10 +117,10 @@ func TestValkeyCache_TTLExpires(t *testing.T) {
 			ctx := context.Background()
 
 			links := []domain.Link{{URL: "https://ttl"}}
-			assert.NoError(t, cache.Set(ctx, 42, links))
+			require.NoError(t, cache.Set(ctx, 42, links))
 
 			_, ok, err := cache.Get(ctx, 42)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, ok)
 
 			assert.Eventually(t, func() bool {
@@ -144,16 +145,16 @@ func TestValkeyCache_ClientSideCaching(t *testing.T) {
 			ctx := context.Background()
 
 			links := []domain.Link{{URL: "https://csc"}}
-			assert.NoError(t, cache.Set(ctx, 100, links))
+			require.NoError(t, cache.Set(ctx, 100, links))
 
 			for range 5 {
 				got, ok, err := cache.Get(ctx, 100)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.True(t, ok)
 				assert.Equal(t, links, got)
 			}
 
-			assert.NoError(t, cache.Invalidate(ctx, 100))
+			require.NoError(t, cache.Invalidate(ctx, 100))
 
 			assert.Eventually(t, func() bool {
 				_, ok, err := cache.Get(ctx, 100)
@@ -174,7 +175,7 @@ func TestValkeyCache_Ping(t *testing.T) {
 
 			addr := startValkey(t)
 			cache := newCache(t, addr, false)
-			assert.NoError(t, cache.Ping(context.Background()))
+			require.NoError(t, cache.Ping(context.Background()))
 		})
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application"
@@ -40,6 +41,8 @@ func TestCachedChatUC_GetLinks_Miss_FetchesAndStores(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			inner, cache, uc := newCachedUC(t)
 
 			cache.EXPECT().Get(gomock.Any(), tt.chatID).Return(nil, false, nil)
@@ -49,10 +52,10 @@ func TestCachedChatUC_GetLinks_Miss_FetchesAndStores(t *testing.T) {
 			out, err := uc.GetLinks(context.Background(), tt.chatID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, out)
 		})
 	}
@@ -79,6 +82,8 @@ func TestCachedChatUC_GetLinks_Hit_SkipsInner(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			_, cache, uc := newCachedUC(t)
 
 			cache.EXPECT().Get(gomock.Any(), tt.chatID).Return(tt.cached, true, nil)
@@ -86,10 +91,10 @@ func TestCachedChatUC_GetLinks_Hit_SkipsInner(t *testing.T) {
 			out, err := uc.GetLinks(context.Background(), tt.chatID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, out)
 		})
 	}
@@ -116,6 +121,8 @@ func TestCachedChatUC_GetLinks_CacheGetError_FallsBackToInner(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			inner, cache, uc := newCachedUC(t)
 
 			cache.EXPECT().Get(gomock.Any(), tt.chatID).Return(nil, false, tt.getErr)
@@ -125,10 +132,10 @@ func TestCachedChatUC_GetLinks_CacheGetError_FallsBackToInner(t *testing.T) {
 			out, err := uc.GetLinks(context.Background(), tt.chatID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, out)
 		})
 	}
@@ -155,6 +162,8 @@ func TestCachedChatUC_GetLinks_CacheSetError_DoesNotBreakResult(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			inner, cache, uc := newCachedUC(t)
 
 			cache.EXPECT().Get(gomock.Any(), tt.chatID).Return(nil, false, nil)
@@ -164,10 +173,10 @@ func TestCachedChatUC_GetLinks_CacheSetError_DoesNotBreakResult(t *testing.T) {
 			out, err := uc.GetLinks(context.Background(), tt.chatID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, out)
 		})
 	}
@@ -192,6 +201,8 @@ func TestCachedChatUC_LinkAddment_InvalidatesOnSuccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			inner, cache, uc := newCachedUC(t)
 
 			inner.EXPECT().LinkAddment(gomock.Any(), tt.chatID, tt.url, nil, nil).Return(nil)
@@ -200,9 +211,9 @@ func TestCachedChatUC_LinkAddment_InvalidatesOnSuccess(t *testing.T) {
 			err := uc.LinkAddment(context.Background(), tt.chatID, tt.url, nil, nil)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -229,6 +240,8 @@ func TestCachedChatUC_LinkAddment_InnerError_NoInvalidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			inner, _, uc := newCachedUC(t)
 
 			inner.EXPECT().LinkAddment(gomock.Any(), tt.chatID, tt.url, nil, nil).Return(tt.innerErr)
@@ -236,9 +249,9 @@ func TestCachedChatUC_LinkAddment_InnerError_NoInvalidation(t *testing.T) {
 			err := uc.LinkAddment(context.Background(), tt.chatID, tt.url, nil, nil)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -267,6 +280,8 @@ func TestCachedChatUC_DeleteLink_InvalidatesOnSuccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			inner, cache, uc := newCachedUC(t)
 
 			inner.EXPECT().DeleteLink(gomock.Any(), tt.chatID, tt.url).Return(tt.deleted, nil)
@@ -275,10 +290,10 @@ func TestCachedChatUC_DeleteLink_InvalidatesOnSuccess(t *testing.T) {
 			got, err := uc.DeleteLink(context.Background(), tt.chatID, tt.url)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedURL, got.URL)
 		})
 	}
@@ -301,6 +316,8 @@ func TestCachedChatUC_ChatDelition_InvalidatesOnSuccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			inner, cache, uc := newCachedUC(t)
 
 			inner.EXPECT().ChatDelition(gomock.Any(), tt.chatID).Return(nil)
@@ -309,9 +326,9 @@ func TestCachedChatUC_ChatDelition_InvalidatesOnSuccess(t *testing.T) {
 			err := uc.ChatDelition(context.Background(), tt.chatID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -334,6 +351,8 @@ func TestCachedChatUC_ChatRegistration_NoCacheTouch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			inner, _, uc := newCachedUC(t)
 
 			inner.EXPECT().ChatRegistration(gomock.Any(), tt.chatID).Return(nil)
@@ -341,9 +360,9 @@ func TestCachedChatUC_ChatRegistration_NoCacheTouch(t *testing.T) {
 			err := uc.ChatRegistration(context.Background(), tt.chatID)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -370,6 +389,8 @@ func TestCachedChatUC_InvalidateError_DoesNotBreakResult(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			inner, cache, uc := newCachedUC(t)
 
 			inner.EXPECT().LinkAddment(gomock.Any(), tt.chatID, tt.url, nil, nil).Return(nil)
@@ -378,9 +399,9 @@ func TestCachedChatUC_InvalidateError_DoesNotBreakResult(t *testing.T) {
 			err := uc.LinkAddment(context.Background(), tt.chatID, tt.url, nil, nil)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}

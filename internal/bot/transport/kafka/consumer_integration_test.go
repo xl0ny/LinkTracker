@@ -15,6 +15,7 @@ import (
 
 	kafkago "github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	tc "github.com/testcontainers/testcontainers-go"
 	tcKafka "github.com/testcontainers/testcontainers-go/modules/kafka"
 	"go.uber.org/mock/gomock"
@@ -38,13 +39,13 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 			kafkaC, err := tcKafka.Run(ctx, "confluentinc/confluent-local:7.6.1",
 				tcKafka.WithClusterID("linktracker-integration"),
 			)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			t.Cleanup(func() {
 				_ = tc.TerminateContainer(kafkaC)
 			})
 
 			brokers, err := kafkaC.Brokers(ctx)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			_, testFile, _, ok := runtime.Caller(0)
 			assert.True(t, ok)
@@ -53,9 +54,9 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 			processedPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
 			failedPath := filepath.Join(repoRoot, "schemas", "avro", "failed_links_event.avsc")
 			processedSchema, err := os.ReadFile(processedPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			failedSchema, err := os.ReadFile(failedPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			var nextID int
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,18 +85,18 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 			defer srv.Close()
 
 			processedEnc, err := registry.NewSingleEncoder(ctx, srv.URL, "processed-integration", processedPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			failedEnc, err := registry.NewSingleEncoder(ctx, srv.URL, "failed-integration", failedPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			topicProcessed := fmt.Sprintf("link.processed-updates-it-%d", time.Now().UnixNano())
 			topicFailed := fmt.Sprintf("failed-links-it-%d", time.Now().UnixNano())
 			topicDLQ := fmt.Sprintf("link.processed-updates-dlq-it-%d", time.Now().UnixNano())
 
 			dialConn, err := kafkago.DialContext(ctx, "tcp", brokers[0])
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
-			assert.NoError(t, dialConn.CreateTopics(
+			require.NoError(t, dialConn.CreateTopics(
 				kafkago.TopicConfig{
 					Topic:             topicProcessed,
 					NumPartitions:     2,
@@ -112,7 +113,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 					ReplicationFactor: 1,
 				},
 			))
-			assert.NoError(t, dialConn.Close())
+			require.NoError(t, dialConn.Close())
 
 			payload, err := processedEnc.Encode(map[string]any{
 				"eventId":     "integration-event-id",
@@ -122,7 +123,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 				"tgChatIds":   []any{int64(424242)},
 				"priority":    "HIGH",
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			w := &kafkago.Writer{
 				Addr:                   kafkago.TCP(brokers...),
@@ -139,14 +140,14 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 					Key:   []byte("424242"),
 					Value: payload,
 				})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			failPayload, err := failedEnc.Encode(map[string]any{
 				"eventId":     "bootstrap-failed-msg",
 				"occurredAt":  int64(1),
 				"description": "__bootstrap_failed__",
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			wFail := &kafkago.Writer{
 				Addr:                   kafkago.TCP(brokers...),
 				Topic:                  topicFailed,
@@ -156,7 +157,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 				WriteTimeout:           30 * time.Second,
 			}
 			err = wFail.WriteMessages(ctx, kafkago.Message{Key: []byte("1"), Value: failPayload})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			defer func() { _ = wFail.Close() }()
 
 			sent := make(chan string, 16)
@@ -192,7 +193,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 			}
 
 			co, err := NewConsumer(kcfg, ccfg, sender, nil, nil)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			rctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 			defer cancel()
@@ -222,7 +223,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 			case <-time.After(30 * time.Second):
 				t.Fatal("consumer goroutine did not exit")
 			}
-			assert.NoError(t, co.Close())
+			require.NoError(t, co.Close())
 		})
 	}
 }

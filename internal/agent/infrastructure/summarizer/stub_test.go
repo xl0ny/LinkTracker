@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStub_TruncatesLongText(t *testing.T) {
@@ -32,10 +33,10 @@ func TestStub_TruncatesLongText(t *testing.T) {
 			out, err := s.Summarize(context.Background(), tt.input)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, out)
 		})
 	}
@@ -65,10 +66,10 @@ func TestStub_KeepsShortText(t *testing.T) {
 			out, err := s.Summarize(context.Background(), tt.input)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, out)
 		})
 	}
@@ -98,10 +99,10 @@ func TestStub_RuneSafeCut(t *testing.T) {
 			out, err := s.Summarize(context.Background(), tt.input)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, out)
 		})
 	}

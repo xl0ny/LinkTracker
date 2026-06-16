@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
@@ -15,7 +16,7 @@ func TestHelp_Name(t *testing.T) {
 	}{
 		{
 			name:     "returns command name",
-			expected: "help",
+			expected: commandHelp,
 		},
 	}
 
@@ -53,7 +54,7 @@ func TestHelp_Handle_returnsCommandList(t *testing.T) {
 	}{
 		{
 			name:             "returns command list",
-			action:           domain.Action{Command: "help"},
+			action:           domain.Action{Command: commandHelp},
 			expectedContains: []string{"/start", "/help"},
 			wantErr:          false,
 		},
@@ -66,10 +67,10 @@ func TestHelp_Handle_returnsCommandList(t *testing.T) {
 			text, err := cmd.Handle(tt.action)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			for _, expected := range tt.expectedContains {
 				assert.Contains(t, text, expected)
 			}

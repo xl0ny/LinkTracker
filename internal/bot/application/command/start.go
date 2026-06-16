@@ -16,7 +16,7 @@ func NewStart(tracker application.LinkTracker) *Start {
 	return &Start{tracker: tracker}
 }
 
-func (s *Start) Name() string { return "start" }
+func (s *Start) Name() string { return commandStart }
 
 func (s *Start) Description() string { return "Начать работу с ботом" }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/linkedin/goavro/v2"
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	commonreg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/avro/registry"
 )
 
@@ -33,7 +34,7 @@ func TestRetryBusiness_stopsAfterMaxRetries(t *testing.T) {
 				calls++
 				return errors.New("fail")
 			})
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Equal(t, 3, calls)
 		})
 	}
@@ -50,7 +51,7 @@ func TestDecodeUpdate_rejectsGarbageWire(t *testing.T) {
 
 			c := &Consumer{sr: commonreg.NewClient("http://unused.example")}
 			_, err := c.decodeUpdate(context.Background(), kafka.Message{Key: []byte("1"), Value: []byte{0xff}})
-			assert.Error(t, err)
+			require.Error(t, err)
 		})
 	}
 }
@@ -69,7 +70,7 @@ func TestDecodeUpdate_validConfluent_payload(t *testing.T) {
 			repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
 			processedPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
 			processedSchema, err := os.ReadFile(processedPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			srv := httptest.NewServer(schemaRegistryStub(map[int]string{7: string(processedSchema)}))
 			defer srv.Close()
@@ -78,11 +79,11 @@ func TestDecodeUpdate_validConfluent_payload(t *testing.T) {
 			c := &Consumer{sr: commonreg.NewClient(srv.URL)}
 
 			raw, err := codecBinaryFromFixture(t, repoRoot)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			wire := commonreg.EncodeConfluent(7, raw)
 
 			rec, err := c.decodeUpdate(ctx, kafka.Message{Key: []byte("999"), Value: wire})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, "hello", extractString(rec["description"]))
 			assert.Equal(t, []int64{42}, extractInt64Slice(rec["tgChatIds"]))
 		})

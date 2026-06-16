@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/domain"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/github"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/stackoverflow"
@@ -55,7 +56,7 @@ func TestChecker_Check_RoutesGitHub(t *testing.T) {
 				URL:         "https://github.com/a/b",
 				LastUpdated: since,
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, out.Changed)
 			assert.Len(t, out.Updates, 1)
 			assert.Contains(t, out.Updates[0].Description, "Issue from checker")
@@ -110,7 +111,7 @@ func TestChecker_Check_RoutesStackOverflow(t *testing.T) {
 				URL:         "https://stackoverflow.com/questions/7/title",
 				LastUpdated: since,
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, out.Changed)
 			assert.Contains(t, out.Description, "Q?")
 			assert.Contains(t, out.Description, "новый ответ")
@@ -145,11 +146,11 @@ func TestChecker_Check_UnsupportedAndInvalidURLs(t *testing.T) {
 			out, err := ch.Check(context.Background(), domain.Link{URL: tt.url})
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errContains)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.False(t, out.Changed)
 			assert.True(t, out.Latest.IsZero())
 		})
@@ -172,7 +173,7 @@ func TestChecker_WithMetrics(t *testing.T) {
 			out, err := got.Check(context.Background(), domain.Link{URL: "https://example.com/path"})
 
 			assert.Same(t, ch, got)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.False(t, out.Changed)
 		})
 	}

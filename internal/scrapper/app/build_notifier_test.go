@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/botclient"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/infrastructure/config"
@@ -29,13 +30,13 @@ func TestBuildNotifier_kafkaDisabledUsesHTTPNotifier(t *testing.T) {
 			srv := httptest.NewServer(http.NotFoundHandler())
 			defer srv.Close()
 			api, err := botclient.NewClientWithResponses(srv.URL)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			var cfg config.Config
 			cfg.Kafka.Cluster.Enabled = false
 
 			n, p, err := buildNotifier(context.Background(), nil, api, &cfg, testScrapperMetrics())
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Nil(t, p)
 			assert.NotNil(t, n)
 		})
@@ -52,7 +53,7 @@ func TestBuildNotifier_kafkaEnabledUsesHTTPWithFallback(t *testing.T) {
 			srv := httptest.NewServer(http.NotFoundHandler())
 			defer srv.Close()
 			api, err := botclient.NewClientWithResponses(srv.URL)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			var cfg config.Config
 			cfg.Kafka.Cluster.Enabled = true

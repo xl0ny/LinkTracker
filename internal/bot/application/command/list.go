@@ -20,7 +20,7 @@ func NewList(tracker application.LinkTracker) *List {
 	return &List{tracker: tracker}
 }
 
-func (l *List) Name() string { return "list" }
+func (l *List) Name() string { return commandList }
 
 func (l *List) Description() string { return "Список отслеживаемых ссылок" }
 

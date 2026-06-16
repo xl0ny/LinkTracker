@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
@@ -19,7 +20,7 @@ func TestList_Name(t *testing.T) {
 	}{
 		{
 			name:     "returns command name",
-			expected: "list",
+			expected: commandList,
 		},
 	}
 
@@ -106,10 +107,10 @@ func TestList_Handle(t *testing.T) {
 			text, err := cmd.Handle(tt.action)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			if tt.expectedText != "" {
 				assert.Equal(t, tt.expectedText, text)
 			}
@@ -127,7 +128,7 @@ func TestUntrack_Name(t *testing.T) {
 	}{
 		{
 			name:     "returns command name",
-			expected: "untrack",
+			expected: commandUntrack,
 		},
 	}
 
@@ -217,10 +218,10 @@ func TestUntrack_Handle(t *testing.T) {
 			text, err := cmd.Handle(tt.action)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedText, text)
 		})
 	}

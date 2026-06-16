@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/scrapper/application/mocks"
@@ -32,7 +33,7 @@ func TestFallback_httpDownUsesKafka(t *testing.T) {
 
 			fb := notifier.NewFallback(primary, fallback)
 			err := fb.Notify(context.Background(), 1, link, "x", "u")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -56,7 +57,7 @@ func TestFallback_bothFailReturnsError(t *testing.T) {
 
 			fb := notifier.NewFallback(primary, fallback)
 			err := fb.Notify(context.Background(), 1, link, "x", "u")
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), "http down")
 			assert.Contains(t, err.Error(), "kafka down")
 		})

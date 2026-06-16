@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheckLink_RepoNewIssue(t *testing.T) {
@@ -48,7 +49,7 @@ func TestCheckLink_RepoNewIssue(t *testing.T) {
 
 			c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
 			out, err := c.CheckLink(context.Background(), "https://github.com/o/r", since)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, out.Changed)
 			assert.Len(t, out.Updates, 1)
 			desc := out.Updates[0].Description
@@ -113,7 +114,7 @@ func TestCheckLink_RepoMultipleNewIssues(t *testing.T) {
 
 			c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
 			out, err := c.CheckLink(context.Background(), "https://github.com/o/r", since)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, out.Changed)
 			assert.Len(t, out.Updates, 3)
 			assert.Contains(t, out.Updates[0].Description, "First")
@@ -149,7 +150,7 @@ func TestCheckLink_RepoBaselineNoNotify(t *testing.T) {
 
 			c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
 			out, err := c.CheckLink(context.Background(), "https://github.com/o/r", time.Time{})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.False(t, out.Changed)
 			assert.Equal(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), out.Latest.UTC())
 		})
@@ -174,7 +175,7 @@ func TestCheckLink_APIUnavailable(t *testing.T) {
 
 			c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
 			_, err := c.CheckLink(context.Background(), "https://github.com/o/r", time.Unix(1, 0))
-			assert.Error(t, err)
+			require.Error(t, err)
 		})
 	}
 }
@@ -215,7 +216,7 @@ func TestCheckLink_PreviewTruncationInMessage(t *testing.T) {
 
 			c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
 			out, err := c.CheckLink(context.Background(), "https://github.com/x/y", since)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, out.Changed)
 			assert.Len(t, out.Updates, 1)
 			idx := strings.Index(out.Updates[0].Description, "Превью: ")
@@ -298,11 +299,11 @@ func TestParseGitHubRef(t *testing.T) {
 			got, err := parseGitHubRef(tt.raw)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errContains)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, got)
 		})
 	}
@@ -403,7 +404,7 @@ func TestCheckLink_IssueOrPullComments(t *testing.T) {
 			c := NewClientWithAPIBase(http.DefaultClient, "", srv.URL)
 			out, err := c.CheckLink(context.Background(), tt.pageURL, tt.since)
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedChanged, out.Changed)
 			assert.Equal(t, tt.expectedLatest, out.Latest.UTC())
 			for _, expected := range tt.expectedContains {
@@ -454,11 +455,11 @@ func TestCheckUpdated(t *testing.T) {
 			got, err := c.CheckUpdated(context.Background(), tt.pageURL)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "github CheckUpdated")
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, got.UTC())
 		})
 	}
@@ -514,11 +515,11 @@ func TestGetJSON(t *testing.T) {
 			err := c.getJSON(context.Background(), srv.URL, &got)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedAuth, gotAuth)
 			assert.Equal(t, "yes", got["ok"])
 		})

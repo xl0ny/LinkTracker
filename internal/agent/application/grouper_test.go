@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/agent/application/mocks"
@@ -67,9 +68,9 @@ func TestGrouper_MultipleUpdatesGrouped(t *testing.T) {
 			for _, update := range tt.updates {
 				err := g.Publish(context.Background(), update)
 				if tt.wantErr {
-					assert.Error(t, err)
-				} else if !assert.NoError(t, err) {
-					return
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
 				}
 			}
 
@@ -112,12 +113,10 @@ func TestGrouper_SingleUpdateUnchanged(t *testing.T) {
 
 			err := g.Publish(context.Background(), tt.update)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 
 			got := requirePublished(t, published)
 			assert.Equal(t, tt.update.Description, got.Description)
@@ -161,12 +160,10 @@ func TestGrouper_FanOutMultipleChats(t *testing.T) {
 
 			err := g.Publish(context.Background(), tt.update)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 
 			updates := make([]domain.ProcessedUpdate, 0, tt.expectedPublishes)
 			for range tt.expectedPublishes {
@@ -213,12 +210,10 @@ func TestGrouper_UsesPublishContextOnTimedFlush(t *testing.T) {
 			publishCtx := context.WithValue(context.Background(), testContextKey, tt.contextValue)
 			err := g.Publish(publishCtx, tt.update)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 
 			got := requirePublishContext(t, contexts)
 			assert.Equal(t, tt.expectedValue, got.Value(testContextKey))

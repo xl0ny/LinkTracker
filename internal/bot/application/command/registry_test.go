@@ -17,7 +17,7 @@ func TestCommands(t *testing.T) {
 	}{
 		{
 			name:          "returns all bot commands in menu order",
-			expectedNames: []string{"start", "help", "track", "untrack", "list"},
+			expectedNames: []string{commandStart, commandHelp, commandTrack, commandUntrack, commandList},
 		},
 	}
 

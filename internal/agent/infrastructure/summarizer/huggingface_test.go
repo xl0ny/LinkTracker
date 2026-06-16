@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHuggingFace_Summarize_Success(t *testing.T) {
@@ -44,10 +45,10 @@ func TestHuggingFace_Summarize_Success(t *testing.T) {
 				MaxLength: 50,
 				MinLength: 10,
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			out, err := hf.Summarize(context.Background(), "this is a long story about something important")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, "short version", out)
 
 			got := <-captureCh
@@ -74,10 +75,10 @@ func TestHuggingFace_Summarize_ErrorStatus(t *testing.T) {
 			defer srv.Close()
 
 			hf, err := NewHuggingFace(HuggingFaceConfig{APIURL: srv.URL, Token: "t"})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			_, err = hf.Summarize(context.Background(), "anything")
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), "Model is currently loading")
 		})
 	}
@@ -98,10 +99,10 @@ func TestHuggingFace_Summarize_EmptyResult(t *testing.T) {
 			defer srv.Close()
 
 			hf, err := NewHuggingFace(HuggingFaceConfig{APIURL: srv.URL})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			_, err = hf.Summarize(context.Background(), "x")
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), "empty summary")
 		})
 	}
@@ -114,6 +115,6 @@ func TestNewHuggingFace_RequiresAPIURL(t *testing.T) {
 		{name: "new hugging face requires apiurl"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) { _, err := NewHuggingFace(HuggingFaceConfig{}); assert.Error(t, err) })
+		t.Run(tt.name, func(t *testing.T) { _, err := NewHuggingFace(HuggingFaceConfig{}); require.Error(t, err) })
 	}
 }

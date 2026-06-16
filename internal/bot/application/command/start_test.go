@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/domain"
 )
@@ -15,7 +16,7 @@ func TestStart_Name(t *testing.T) {
 	}{
 		{
 			name:     "returns command name",
-			expected: "start",
+			expected: commandStart,
 		},
 	}
 
@@ -53,7 +54,7 @@ func TestStart_Handle_returnsWelcomeMessage(t *testing.T) {
 	}{
 		{
 			name:     "returns welcome message",
-			action:   domain.Action{Command: "start"},
+			action:   domain.Action{Command: commandStart},
 			expected: "Добро пожаловать! Используйте /help для списка команд.",
 			wantErr:  false,
 		},
@@ -66,10 +67,10 @@ func TestStart_Handle_returnsWelcomeMessage(t *testing.T) {
 			text, err := cmd.Handle(tt.action)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, text)
 		})
 	}

@@ -18,7 +18,7 @@ func NewUntrack(tracker application.LinkTracker) *Untrack {
 	return &Untrack{tracker: tracker}
 }
 
-func (u *Untrack) Name() string { return "untrack" }
+func (u *Untrack) Name() string { return commandUntrack }
 
 func (u *Untrack) Description() string {
 	return "Прекратить отслеживание ссылки"

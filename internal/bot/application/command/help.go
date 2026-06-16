@@ -6,7 +6,7 @@ import (
 
 type Help struct{}
 
-func (Help) Name() string { return "help" }
+func (Help) Name() string { return commandHelp }
 
 func (Help) Description() string { return "Список доступных команд" }
 

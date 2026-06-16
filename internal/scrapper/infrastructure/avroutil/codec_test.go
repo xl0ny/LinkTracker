@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMustLoadCodecFromFile(t *testing.T) {
@@ -29,7 +30,7 @@ func TestMustLoadCodecFromFile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "schema.avsc")
-			assert.NoError(t, os.WriteFile(path, []byte(tt.schema), 0o600))
+			require.NoError(t, os.WriteFile(path, []byte(tt.schema), 0o600))
 
 			load := func() {
 				codec := MustLoadCodecFromFile(path)

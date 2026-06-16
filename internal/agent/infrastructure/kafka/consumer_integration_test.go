@@ -17,6 +17,7 @@ import (
 
 	kafkago "github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	tc "github.com/testcontainers/testcontainers-go"
 	tcKafka "github.com/testcontainers/testcontainers-go/modules/kafka"
 
@@ -40,26 +41,26 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 			kafkaC, err := tcKafka.Run(ctx, "confluentinc/confluent-local:7.6.1",
 				tcKafka.WithClusterID("agent-integration"),
 			)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			t.Cleanup(func() {
 				_ = tc.TerminateContainer(kafkaC)
 			})
 
 			brokers, err := kafkaC.Brokers(ctx)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			repoRoot := repoRootDir(t)
 			wd, err := os.Getwd()
-			assert.NoError(t, err)
-			assert.NoError(t, os.Chdir(repoRoot))
+			require.NoError(t, err)
+			require.NoError(t, os.Chdir(repoRoot))
 			t.Cleanup(func() { _ = os.Chdir(wd) })
 
 			rawSchemaPath := filepath.Join(repoRoot, "schemas", "avro", "link_raw_update_event.avsc")
 			processedSchemaPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
 			rawSchema, err := os.ReadFile(rawSchemaPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			processedSchema, err := os.ReadFile(processedSchemaPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			srv := newSchemaRegistryStub(map[int]string{1: string(rawSchema), 2: string(processedSchema)})
 			defer srv.Close()
@@ -71,7 +72,7 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 			createTopics(ctx, t, brokers, rawTopic, processedTopic, dlqTopic)
 
 			rawEnc, err := registry.NewSingleEncoder(ctx, srv.URL, "raw-it", rawSchemaPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			rawWriter := &kafkago.Writer{
 				Addr:                   kafkago.TCP(brokers...),
@@ -91,9 +92,9 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 				"author":      "alice",
 				"tgChatIds":   []any{int64(123), int64(456)},
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
-			assert.NoError(t, rawWriter.WriteMessages(ctx,
+			require.NoError(t, rawWriter.WriteMessages(ctx,
 				kafkago.Message{Key: []byte("evt-valid"), Value: validPayload},
 				kafkago.Message{Key: []byte("poison"), Value: []byte{0xff, 0xff, 0xff, 0xff}},
 			))
@@ -130,7 +131,7 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 			}
 
 			producer, err := NewProducer(ctx, kcfg, pcfg)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			defer func() { _ = producer.Close() }()
 
 			grouper := application.NewGrouper(producer, application.GrouperConfig{Window: 100 * time.Millisecond})
@@ -140,7 +141,7 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 
 			handler := application.NewUpdateHandler(processor, grouper)
 			consumer, err := NewConsumer(kcfg, ccfg, handler)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			defer func() { _ = consumer.Close() }()
 
 			errCh := make(chan error, 1)
@@ -165,14 +166,14 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 			defer func() { _ = dlqReader.Close() }()
 
 			processedMsg, err := readMessage(rctx, processedReader, 60*time.Second)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			processedClient := registry.NewClient(srv.URL)
 			processedID, processedDatum, err := registry.DecodeConfluent(processedMsg.Value)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			codec, err := processedClient.CodecForID(rctx, processedID)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			native, _, err := codec.NativeFromBinary(processedDatum)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			rec, ok := native.(map[string]any)
 			assert.True(t, ok)
 			assert.Equal(t, "evt-valid", rec["eventId"])
@@ -181,7 +182,7 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 			assert.Equal(t, application.PriorityMedium, rec["priority"])
 
 			dlqMsg, err := readMessage(rctx, dlqReader, 60*time.Second)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Contains(t, string(dlqMsg.Value), "decode confluent wire")
 
 			cancel()
@@ -208,26 +209,26 @@ func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
 			kafkaC, err := tcKafka.Run(ctx, "confluentinc/confluent-local:7.6.1",
 				tcKafka.WithClusterID("agent-filter-it"),
 			)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			t.Cleanup(func() {
 				_ = tc.TerminateContainer(kafkaC)
 			})
 
 			brokers, err := kafkaC.Brokers(ctx)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			repoRoot := repoRootDir(t)
 			wd, err := os.Getwd()
-			assert.NoError(t, err)
-			assert.NoError(t, os.Chdir(repoRoot))
+			require.NoError(t, err)
+			require.NoError(t, os.Chdir(repoRoot))
 			t.Cleanup(func() { _ = os.Chdir(wd) })
 
 			rawSchemaPath := filepath.Join(repoRoot, "schemas", "avro", "link_raw_update_event.avsc")
 			processedSchemaPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
 			rawSchema, err := os.ReadFile(rawSchemaPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			processedSchema, err := os.ReadFile(processedSchemaPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			srv := newSchemaRegistryStub(map[int]string{1: string(rawSchema), 2: string(processedSchema)})
 			defer srv.Close()
@@ -239,7 +240,7 @@ func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
 			createTopics(ctx, t, brokers, rawTopic, processedTopic, dlqTopic)
 
 			rawEnc, err := registry.NewSingleEncoder(ctx, srv.URL, "raw-filter-it", rawSchemaPath)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			rawWriter := &kafkago.Writer{
 				Addr:                   kafkago.TCP(brokers...),
@@ -259,8 +260,8 @@ func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
 				"author":      "alice",
 				"tgChatIds":   []any{int64(777)},
 			})
-			assert.NoError(t, err)
-			assert.NoError(t, rawWriter.WriteMessages(ctx,
+			require.NoError(t, err)
+			require.NoError(t, rawWriter.WriteMessages(ctx,
 				kafkago.Message{Key: []byte("evt-filtered"), Value: filteredPayload},
 			))
 
@@ -299,7 +300,7 @@ func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
 			}
 
 			producer, err := NewProducer(ctx, kcfg, pcfg)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			defer func() { _ = producer.Close() }()
 
 			grouper := application.NewGrouper(producer, application.GrouperConfig{Window: 100 * time.Millisecond})
@@ -309,7 +310,7 @@ func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
 
 			handler := application.NewUpdateHandler(processor, grouper)
 			consumer, err := NewConsumer(kcfg, ccfg, handler)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			defer func() { _ = consumer.Close() }()
 
 			go func() {
@@ -328,7 +329,7 @@ func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
 			readCtx, readCancel := context.WithTimeout(ctx, 5*time.Second)
 			defer readCancel()
 			_, err = readMessage(readCtx, processedReader, 5*time.Second)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.ErrorIs(t, err, context.DeadlineExceeded)
 		})
 	}
@@ -392,7 +393,7 @@ func newSchemaRegistryStub(initial map[int]string) *httptest.Server {
 func createTopics(ctx context.Context, t *testing.T, brokers []string, topics ...string) {
 	t.Helper()
 	conn, err := kafkago.DialContext(ctx, "tcp", brokers[0])
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer func() { _ = conn.Close() }()
 	configs := make([]kafkago.TopicConfig, 0, len(topics))
 	for _, topic := range topics {
@@ -402,5 +403,5 @@ func createTopics(ctx context.Context, t *testing.T, brokers []string, topics ..
 			ReplicationFactor: 1,
 		})
 	}
-	assert.NoError(t, conn.CreateTopics(configs...))
+	require.NoError(t, conn.CreateTopics(configs...))
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWriteJSON(t *testing.T) {
@@ -33,7 +34,7 @@ func TestWriteJSON(t *testing.T) {
 			WriteJSON(rec, tt.status, tt.body)
 
 			var got map[string]string
-			assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 			assert.Equal(t, tt.expectedStatus, rec.Code)
 			assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 			assert.Equal(t, tt.expectedBody, got)
@@ -69,7 +70,7 @@ func TestWriteError(t *testing.T) {
 			WriteError(rec, tt.status, "test error", tt.code, tt.description, tt.exceptionName, tt.message)
 
 			var got APIErrorResponse
-			assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 			assert.Equal(t, tt.expectedStatus, rec.Code)
 			assert.Equal(t, tt.code, *got.Code)
 			assert.Equal(t, tt.description, *got.Description)

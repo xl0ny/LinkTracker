@@ -19,7 +19,7 @@ func NewTrack(tracker application.LinkTracker, state *application.TrackStateStor
 	return &Track{tracker: tracker, state: state}
 }
 
-func (t *Track) Name() string { return "track" }
+func (t *Track) Name() string { return commandTrack }
 
 func (t *Track) Description() string { return "Начать отслеживание ссылки" }
 

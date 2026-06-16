@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCheckQuestion_NewAnswer(t *testing.T) {
@@ -39,7 +40,7 @@ func TestCheckQuestion_NewAnswer(t *testing.T) {
 
 			c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
 			out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/how", since)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, out.Changed)
 			assert.Contains(t, out.Description, "Как на Go?")
 			assert.Contains(t, out.Description, "gopher")
@@ -76,7 +77,7 @@ func TestCheckQuestion_NewQuestionComment(t *testing.T) {
 
 			c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
 			out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/x", since)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, out.Changed)
 			assert.Contains(t, out.Description, "новый комментарий к вопросу")
 			assert.Contains(t, out.Description, "bob")
@@ -119,7 +120,7 @@ func TestCheckQuestion_NewAnswerComment(t *testing.T) {
 
 			c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
 			out, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/42/x", since)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.True(t, out.Changed)
 			assert.Contains(t, out.Description, "новый комментарий к ответу")
 			assert.Contains(t, out.Description, "critic")
@@ -145,7 +146,7 @@ func TestCheckQuestion_APIUnavailable(t *testing.T) {
 
 			c := NewClientWithAPIBase(http.DefaultClient, srv.URL)
 			_, err := c.CheckQuestion(context.Background(), "https://stackoverflow.com/questions/1/x", time.Time{})
-			assert.Error(t, err)
+			require.Error(t, err)
 		})
 	}
 }

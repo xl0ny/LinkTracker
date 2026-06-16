@@ -10,6 +10,7 @@ import (
 
 	"github.com/sony/gobreaker"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var breakerSuccess = struct{}{}
@@ -54,7 +55,7 @@ func TestHTTP_timeout(t *testing.T) {
 			_, err := client.Get(srv.URL)
 			elapsed := time.Since(start)
 
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Less(t, elapsed, delay)
 		})
 	}
@@ -83,7 +84,7 @@ func TestHTTP_retryOn5xx(t *testing.T) {
 			client := NewHTTPClient("retry-test", cfg)
 
 			resp, err := client.Get(srv.URL)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 			_ = resp.Body.Close()
 			assert.Equal(t, int32(3), calls.Load())
@@ -109,7 +110,7 @@ func TestHTTP_noRetryOn4xx(t *testing.T) {
 			client := NewHTTPClient("no-retry-test", cfg)
 
 			resp, err := client.Get(srv.URL)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 			_ = resp.Body.Close()
 			assert.Equal(t, int32(1), calls.Load())
@@ -146,7 +147,7 @@ func TestHTTP_retryConstantBackoff(t *testing.T) {
 			client := NewHTTPClient("backoff-test", cfg)
 
 			_, err := client.Get(srv.URL)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Equal(t, int32(3), calls.Load())
 			for _, gap := range gaps {
 				assert.GreaterOrEqual(t, gap, backoff-time.Millisecond*15)
@@ -186,7 +187,7 @@ func TestHTTP_retryExponentialBackoff(t *testing.T) {
 			client := NewHTTPClient("exp-backoff-test", cfg)
 
 			_, err := client.Get(srv.URL)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Equal(t, int32(4), calls.Load())
 			assert.GreaterOrEqual(t, len(gaps), 2)
 			assert.Greater(t, gaps[1], gaps[0])
@@ -227,7 +228,7 @@ func TestHTTP_exponentialBackoffMaxDelay(t *testing.T) {
 			client := NewHTTPClient("exp-cap-test", cfg)
 
 			_, err := client.Get(srv.URL)
-			assert.Error(t, err)
+			require.Error(t, err)
 			for _, gap := range gaps {
 				assert.LessOrEqual(t, gap, maxDelay+30*time.Millisecond)
 			}
@@ -252,7 +253,7 @@ func TestRateLimit_disabledWhenNegative(t *testing.T) {
 			client := &http.Client{Timeout: time.Second}
 			for range 5 {
 				resp, err := client.Get(srv.URL)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, http.StatusOK, resp.StatusCode)
 				_ = resp.Body.Close()
 			}
@@ -279,7 +280,7 @@ func TestRateLimit_exceedsLimit(t *testing.T) {
 			var ok, limited int
 			for range 5 {
 				resp, err := client.Get(srv.URL)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				switch resp.StatusCode {
 				case http.StatusOK:
 					ok++
@@ -328,7 +329,7 @@ func TestCircuitBreaker_openState(t *testing.T) {
 			_, err := client.Get(srv.URL)
 			elapsed := time.Since(start)
 
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Less(t, elapsed, 100*time.Millisecond)
 			assert.Equal(t, before, calls.Load())
 		})
@@ -364,7 +365,7 @@ func TestCircuitBreaker_halfOpenToClosed(t *testing.T) {
 			ok := func() (any, error) { return breakerSuccess, nil }
 			for range int(cfg.CircuitBreaker.PermittedCallsInHalfOpenState) {
 				_, err := cb.Execute(ok)
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 			assert.Equal(t, gobreaker.StateClosed, cb.State())
 		})
@@ -419,7 +420,7 @@ func TestCircuitBreaker_openFailsFast(t *testing.T) {
 			})
 			elapsed := time.Since(start)
 
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.False(t, ran.Load())
 			assert.Less(t, elapsed, 50*time.Millisecond)
 		})

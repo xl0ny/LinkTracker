@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEncodeDecodeConfluent_roundTrip(t *testing.T) {
@@ -31,10 +32,10 @@ func TestEncodeDecodeConfluent_roundTrip(t *testing.T) {
 			gotID, gotDatum, err := DecodeConfluent(wire)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedID, gotID)
 			assert.Equal(t, tt.expectedDatum, gotDatum)
 		})
@@ -59,9 +60,9 @@ func TestDecodeConfluent_rejectsShort(t *testing.T) {
 			_, _, err := DecodeConfluent(tt.wire)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -85,9 +86,9 @@ func TestDecodeConfluent_rejectsBadMagic(t *testing.T) {
 			_, _, err := DecodeConfluent(tt.wire)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/application"
 )
@@ -32,10 +33,10 @@ func TestNewLinkTracker_emptyURL_error(t *testing.T) {
 			_, err := NewLinkTracker(tt.baseURL, nil)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrContains)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -59,9 +60,9 @@ func TestNewLinkTracker_whitespaceURL_error(t *testing.T) {
 			_, err := NewLinkTracker(tt.baseURL, nil)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -88,15 +89,13 @@ func TestClient_RegisterChat_409_returnsNil(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			err = lt.RegisterChat(context.Background(), 1)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -123,15 +122,13 @@ func TestClient_RegisterChat_200_returnsNil(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			err = lt.RegisterChat(context.Background(), 1)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -160,16 +157,14 @@ func TestClient_RegisterChat_400_returnsError(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			err = lt.RegisterChat(context.Background(), 1)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrContains)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -198,16 +193,14 @@ func TestClient_AddLink_409_returnsLinkAlreadyExists(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			err = lt.AddLink(context.Background(), 1, "https://github.com/a/b", nil)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrContains)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -236,16 +229,14 @@ func TestClient_AddLink_404_returnsChatNotFound(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			err = lt.AddLink(context.Background(), 1, "https://github.com/a/b", nil)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrContains)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -295,22 +286,20 @@ func TestClient_AddLink_moreStatusesAndRequest(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			err = lt.AddLink(context.Background(), 42, tt.link, tt.tags)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.expectedErr != nil {
-					assert.ErrorIs(t, err, tt.expectedErr)
+					require.ErrorIs(t, err, tt.expectedErr)
 				}
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedPath, gotPath)
 			assert.Equal(t, tt.expectedChat, gotChatID)
 			assert.Equal(t, tt.link, *gotBody.Link)
@@ -344,18 +333,16 @@ func TestClient_ListLinks_404_returnsError(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			links, err := lt.ListLinks(context.Background(), 1, "")
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, links)
 				assert.Contains(t, err.Error(), tt.expectedErrContains)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -413,17 +400,15 @@ func TestClient_ListLinks_moreResponses(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			links, err := lt.ListLinks(context.Background(), 1, tt.tagFilter)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errContains)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedLinks, links)
 		})
 	}
@@ -456,16 +441,14 @@ func TestClient_ListLinks_200_emptyBody_returnsNilSlice(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			links, err := lt.ListLinks(context.Background(), 1, "")
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedLinks, links)
 		})
 	}
@@ -500,16 +483,14 @@ func TestClient_ListLinks_200_withLinks_returnsParsed(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			links, err := lt.ListLinks(context.Background(), 1, "")
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedLinks, links)
 		})
 	}
@@ -538,16 +519,14 @@ func TestClient_RemoveLink_404_returnsLinkNotFound(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			err = lt.RemoveLink(context.Background(), 1, "https://github.com/a/b")
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrContains)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -594,17 +573,15 @@ func TestClient_RemoveLink_moreStatusesAndRequest(t *testing.T) {
 			defer srv.Close()
 
 			lt, err := NewLinkTracker(srv.URL, nil)
-			if !assert.NoError(t, err) {
-				return
-			}
+			require.NoError(t, err)
 			err = lt.RemoveLink(context.Background(), 42, tt.link)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errContains)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectedPath, gotPath)
 			assert.Equal(t, tt.expectedChat, gotChatID)
 			assert.Equal(t, tt.link, *gotBody.Link)
