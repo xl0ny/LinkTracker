@@ -67,7 +67,7 @@ test:
 
 .PHONY: test-integration
 test-integration:
-	@go test -tags=integration -count=1 -v ./internal/scrapper/infrastructure/db/... ./internal/bot/transport/kafka/... ./internal/agent/infrastructure/kafka/... ./internal/scrapper/infrastructure/valkey/...
+	@go test -tags=integration -count=1 -p 1 -v ./test/...
 
 .PHONY: lint
 lint:

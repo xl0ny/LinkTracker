@@ -1,6 +1,6 @@
 //go:build integration
 
-package kafka
+package agentkafka_test
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	tcKafka "github.com/testcontainers/testcontainers-go/modules/kafka"
 
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/agent/application"
+	agentkafka "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/agent/infrastructure/kafka"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/agent/infrastructure/summarizer"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/avro/registry"
 	commoncfg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
@@ -130,7 +132,7 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 				RetryDelay:     100 * time.Millisecond,
 			}
 
-			producer, err := NewProducer(ctx, kcfg, pcfg)
+			producer, err := agentkafka.NewProducer(ctx, kcfg, pcfg)
 			require.NoError(t, err)
 			defer func() { _ = producer.Close() }()
 
@@ -140,7 +142,7 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 			go grouper.Run(rctx)
 
 			handler := application.NewUpdateHandler(processor, grouper)
-			consumer, err := NewConsumer(kcfg, ccfg, handler)
+			consumer, err := agentkafka.NewConsumer(kcfg, ccfg, handler)
 			require.NoError(t, err)
 			defer func() { _ = consumer.Close() }()
 
@@ -181,7 +183,7 @@ func TestAgentIntegration_RawProcessedRoundTrip(t *testing.T) {
 			assert.Contains(t, desc, "this is a valid update")
 			assert.Equal(t, application.PriorityMedium, rec["priority"])
 
-			dlqMsg, err := readMessage(rctx, dlqReader, 60*time.Second)
+			dlqMsg, err := readMessageContaining(rctx, dlqReader, 60*time.Second, "decode confluent wire")
 			require.NoError(t, err)
 			assert.Contains(t, string(dlqMsg.Value), "decode confluent wire")
 
@@ -299,7 +301,7 @@ func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
 				RetryDelay:     100 * time.Millisecond,
 			}
 
-			producer, err := NewProducer(ctx, kcfg, pcfg)
+			producer, err := agentkafka.NewProducer(ctx, kcfg, pcfg)
 			require.NoError(t, err)
 			defer func() { _ = producer.Close() }()
 
@@ -309,7 +311,7 @@ func TestAgentIntegration_FilteredMessageNotPublished(t *testing.T) {
 			go grouper.Run(runCtx)
 
 			handler := application.NewUpdateHandler(processor, grouper)
-			consumer, err := NewConsumer(kcfg, ccfg, handler)
+			consumer, err := agentkafka.NewConsumer(kcfg, ccfg, handler)
 			require.NoError(t, err)
 			defer func() { _ = consumer.Close() }()
 
@@ -341,11 +343,25 @@ func readMessage(ctx context.Context, r *kafkago.Reader, timeout time.Duration) 
 	return r.ReadMessage(rctx)
 }
 
+func readMessageContaining(ctx context.Context, r *kafkago.Reader, timeout time.Duration, expected string) (kafkago.Message, error) {
+	rctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	for {
+		msg, err := r.ReadMessage(rctx)
+		if err != nil {
+			return kafkago.Message{}, err
+		}
+		if expected == "" || strings.Contains(string(msg.Value), expected) {
+			return msg, nil
+		}
+	}
+}
+
 func repoRootDir(t *testing.T) string {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	assert.True(t, ok)
-	return filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
+	return filepath.Join(filepath.Dir(thisFile), "..", "..")
 }
 
 func newSchemaRegistryStub(initial map[int]string) *httptest.Server {

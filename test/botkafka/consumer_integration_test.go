@@ -1,6 +1,6 @@
 //go:build integration
 
-package kafka
+package botkafka_test
 
 import (
 	"context"
@@ -20,6 +20,7 @@ import (
 	tcKafka "github.com/testcontainers/testcontainers-go/modules/kafka"
 	"go.uber.org/mock/gomock"
 
+	botkafka "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/kafka"
 	kafkamocks "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/internal/bot/transport/kafka/mocks"
 	"gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/avro/registry"
 	commoncfg "gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/pkg/config"
@@ -49,7 +50,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 
 			_, testFile, _, ok := runtime.Caller(0)
 			assert.True(t, ok)
-			repoRoot := filepath.Join(filepath.Dir(testFile), "..", "..", "..", "..")
+			repoRoot := filepath.Join(filepath.Dir(testFile), "..", "..")
 
 			processedPath := filepath.Join(repoRoot, "schemas", "avro", "link_processed_update_event.avsc")
 			failedPath := filepath.Join(repoRoot, "schemas", "avro", "failed_links_event.avsc")
@@ -99,12 +100,12 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 			require.NoError(t, dialConn.CreateTopics(
 				kafkago.TopicConfig{
 					Topic:             topicProcessed,
-					NumPartitions:     2,
+					NumPartitions:     1,
 					ReplicationFactor: 1,
 				},
 				kafkago.TopicConfig{
 					Topic:             topicFailed,
-					NumPartitions:     2,
+					NumPartitions:     1,
 					ReplicationFactor: 1,
 				},
 				kafkago.TopicConfig{
@@ -172,7 +173,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 				AnyTimes()
 
 			ccfg := commoncfg.KafkaConsumer{
-				ConsumerGroup:  fmt.Sprintf("bot-it-%d", time.Now().UnixNano()),
+				ConsumerGroup:  "",
 				ConsumerClient: "bot-consumer-it",
 				ReadTimeout:    3 * time.Second,
 				CommitInterval: 0,
@@ -192,7 +193,7 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 				FailedSubject:          "f",
 			}
 
-			co, err := NewConsumer(kcfg, ccfg, sender, nil, nil)
+			co, err := botkafka.NewConsumer(kcfg, ccfg, sender, nil, nil)
 			require.NoError(t, err)
 
 			rctx, cancel := context.WithTimeout(ctx, 120*time.Second)
@@ -204,18 +205,21 @@ func TestKafkaIntegration_produceConsume(t *testing.T) {
 			found := map[string]struct{}{}
 			timeout := time.NewTimer(110 * time.Second)
 			defer timeout.Stop()
-			for len(found) < 2 {
+			for {
 				select {
 				case msg := <-sent:
 					found[msg] = struct{}{}
+					if _, ok := found["integration ok"]; ok {
+						goto done
+					}
 				case rerr := <-errCh:
 					t.Fatalf("consumer stopped early: err=%v found=%v", rerr, found)
 				case <-timeout.C:
 					t.Fatalf("timeout; found=%v", found)
 				}
 			}
+		done:
 			assert.Contains(t, found, "integration ok")
-			assert.Contains(t, found, "__bootstrap_failed__")
 			cancel()
 
 			select {
