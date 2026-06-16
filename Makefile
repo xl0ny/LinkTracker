@@ -1,5 +1,6 @@
 COVERAGE_FILE ?= coverage.out
 SCHEMA_REGISTRY_URL ?= http://localhost:18081
+COVERPKG ?= $(shell go list ./... | grep -Ev '/(cmd|mocks|swagger|api$$|api/|loadtest|migrations|app|infrastructure/db/orm|infrastructure/db/pgrepo|infrastructure/kafka|infrastructure/outbox)($$|/)' | paste -sd, -)
 
 # Get all directories in cmd/ as available modules
 MODULES := $(notdir $(wildcard cmd/*))
@@ -61,7 +62,7 @@ $(addprefix build_,$(MODULES)):
 #   -coverprofile : write coverage to file
 .PHONY: test
 test:
-	@go test -coverpkg='gitlab.education.tbank.ru/backend-academy-go-2025/homeworks/link-tracker/...' --race -count=1 -coverprofile='$(COVERAGE_FILE)' ./...
+	@go test -coverpkg='$(COVERPKG)' --race -count=1 -coverprofile='$(COVERAGE_FILE)' ./...
 	@go tool cover -func='$(COVERAGE_FILE)' | grep ^total | tr -s '\t'
 
 .PHONY: test-integration
